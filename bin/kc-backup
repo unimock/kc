@@ -1,0 +1,203 @@
+#!/bin/bash
+
+. /opt/kc/etc/config
+
+GLUSTER_VOLUME="cust"
+MPOINT=/backup
+NAME="kvm-bup"
+HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
+
+#############################
+_usage()
+{
+  if [ "$1" = "" ] ; then
+    echo "  usage: `basename $0` mount|umount|status|simul|backup [vm]"
+    exit 0
+  fi
+}
+#############################
+_mount()
+{
+  FI=${KC_TSP_DIR}/config/backup-uuids.conf
+  if [ ! -e $FI ] ; then
+    echo "error: missing uuid definition file <$FI>"
+    exit 0
+  fi 
+  _mount=0
+  for UUID in $( cat $FI ) ; do
+    DEV=`blkid  -U $UUID`
+    ret=$?
+    if [ "$ret" = "0" ] ; then
+      cryptsetup luksOpen $DEV $NAME < ${KC_TSP_DIR}/config/backup-passwd.conf
+      mount /dev/mapper/$NAME $MPOINT
+      . $MPOINT/INFO.cfg 
+      echo "backup device: <${INFO_HD_NAME}> successfully mounted on <$MPOINT>"
+      _mount=1
+      break
+    fi
+  done
+  if [ "${_mount}" != "1" ] ; then
+    echo "no backup hd found"
+    exit 0
+  fi 
+}
+#############################
+_umount()
+{
+  . $MPOINT/INFO.cfg
+  umount $MPOINT
+  cryptsetup luksClose $NAME
+  echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
+}
+#############################
+_status()
+
+  {
+
+  FI=${KC_TSP_DIR}/config/gluster.conf
+  if [ ! -e $FI ] ; then
+    echo "error: missing uuid definition file <$FI>"
+    exit 0
+  fi
+  . $FI
+  #
+  # check gluster status
+  #
+  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
+  for i in $list ; do
+    if [ "$i" != "Connected" ] ; then
+      echo "gluster status error <$i>"
+      exit 1
+    fi
+  done
+  echo "gluster_status=Connected"
+  #
+  # check gluster is in sync
+  #
+  list=$( gluster volume heal ${GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
+  declare -i count
+  count=0
+  for i in $list ; do count=count+${i} ; done
+  if [ "$count" != "0" ] ; then
+    echo "gluster not in sync (entries=$count)"
+    exit 1
+  fi
+  echo "gluster_entries=0"
+}
+################################################################################################
+# 
+# magic main
+#
+################################################################################################
+
+CMD="$1"
+VMB="$2"
+
+if [ "$CMD" = "mount" ] ; then
+  _mount
+  exit 0
+fi 
+if [ "$CMD" = "umount" ] ; then
+  _umount
+  exit 0
+fi
+if [ "$CMD" = "status" ] ; then
+  _status
+  exit 0
+fi
+_usage $CMD
+if [ "$CMD" != "backup" -a "$CMD" != "simul" ] ; then
+  echo "unkomwn command given"
+  exit 1
+fi
+
+date
+_status
+_mount
+echo "===================================================================="
+  for h in $HOSTS ; do
+    vms=$( ssh -q ${KC_USER}@${h} "virsh list --all --name" )
+    for vm in $vms ; do
+        if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+          continue ;
+        fi
+        echo "--------------------------------------------------------------------"
+        state=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" ) 
+        echo -e "$vm @ ${h} ($state) :\n"
+        # Get list of disk names and image paths
+        unset imgs ; declare -A imgs
+        disc=""
+        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print $3}' )
+        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
+        #
+        # Test if there exists already a file with extension .backup
+        #
+        for d in ${disc[@]}; do
+            img=${imgs[${d}]}
+            img=${img%.qcow2} ; img=${img%.img}
+            #echo check if $img exists
+            if [ -f ${img}.backup ] ; then
+               echo "error: ${img}.backup from VM ${vm} already exists"
+               _umount
+               exit 1
+            fi
+        done
+        if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
+          if [ "$CMD" = "simul" ] ; then
+            echo mkdir -p $MPOINT/domains/${vm}
+            echo "ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
+          else
+            mkdir -p $MPOINT/domains/${vm}
+            ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml
+          fi
+          if [ "$state" != "shut off" ] ; then
+            QPAR="--quiesce"
+            ssh -q ${KC_USER}@${h} "virsh domtime ${vm}" >/dev/null 2>&1
+            if [ "$?" != "0" ] ; then
+                QPAR=""
+                echo "warning: snapshot-create without quiesce!!!"
+            fi
+            if [ "$CMD" = "simul" ] ; then
+              echo ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+            else
+              ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+            fi
+          fi
+          for d in ${disc[@]}; do
+            img=${imgs[${d}]}
+            if [ "$CMD" = "simul" ] ; then
+              echo rsync -av ${img} $MPOINT/domains/${vm}/
+            else
+              echo "copy ${img} to $MPOINT/domains/${vm}/ ..."
+              rsync -av ${img} $MPOINT/domains/${vm}/   # --progress
+            fi
+            if [ "$state" != "shut off" ] ; then
+              if [ "$CMD" = "simul" ] ; then
+                echo ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+              else
+                ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+
+                # check, if commit was successful
+                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/^file +disk +${d}/ {print \$4}"  )
+                if [ "${chk}" != "${img}" ] ; then
+                  echo "error: blockcommit for image: <${img}>"
+                  _umount
+                  exit 1
+                fi 
+                img=${img%.qcow2} ; img=${img%.img} 
+                echo "remove snapshot image: <${img}.backup>"
+                rm -f ${img}.backup
+              fi
+            fi
+          done
+          ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details"
+        fi
+    done
+  done
+echo "===================================================================="
+find   $MPOINT -ls
+df -h  $MPOINT
+_umount
+date
+exit 0
+

@@ -1,0 +1,70 @@
+#!/bin/bash
+
+hostname=`hostname`
+MIP=$( host ${hostname} | sed -e "s/.*\ //" )
+
+#echo "kvm-controller: $AIP , me: $MIP"
+#if [ "$AIP" != "$MIP" ] ; then
+#  echo "I am not the master kvm controller. Exiting."
+#  exit 0
+#fi
+
+if [ "$1" = "" ] ; then
+  echo ""
+  echo " usage `basename $0` undefine|export|define|complete"
+  echo ""
+fi
+
+. /opt/kc/etc/config
+
+if [ ! -e ${KC_TSP_DIR}/config/hosts.conf ] ; then
+  echo "error: missing hosts config <${KC_TSP_DIR}/config/hosts.conf>"
+  exit 1
+fi
+
+HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
+SYNCDIR=${KC_TSP_DIR}/sync/qemu
+
+if [ "$1" = "undefine" -o "$1" = "complete" ] ; then
+  for h in $HOSTS ; do
+    echo "check shutoff domains on host <$h> :"
+    down=$( ssh -q ${KC_USER}@${h} "virsh list --state-shutoff --name" )
+    for vm in $down ; do
+      if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+         ssh -q ${KC_USER}@${h} "virsh undefine $vm"
+      fi 
+    done
+  done
+fi
+
+if [ "$1" = "export" -o "$1" = "complete" ] ; then
+  mkdir -p ${SYNCDIR}
+  rm -f ${SYNCDIR}/*.xml
+  for h in $HOSTS ; do
+    for vm in $( ssh -q ${KC_USER}@${h} virsh list --name); do
+      echo "on host <${h}> dump xml from domain <$vm> to <${SYNCDIR}/${vm}@${h}.xml>"
+      ssh -q ${KC_USER}@${h} "virsh dumpxml ${vm} > ${SYNCDIR}/${vm}@${h}.xml"
+      sed -i "s|<name>${vm}</name>|<name>[${vm}@${h}]</name>|g" ${SYNCDIR}/${vm}@${h}.xml
+      # hardware addresses need to be removed, libvirt will assign
+      # new addresses automatically
+      sed -i /uuid/d ${SYNCDIR}/${vm}@${h}.xml
+      #keep mac address  sed -i '/mac address/d' /tmp/that-vm.xml 
+    done
+  done
+fi
+
+if [ "$1" = "define" -o "$1" = "complete" ] ; then
+  for h in $HOSTS ; do
+    for hl in $HOSTS ; do
+      if [ "$h" = "$hl" ] ; then continue ; fi
+      vml=$(find ${SYNCDIR} -name "*@${hl}.xml")
+      echo "on host=$h do :"
+      for vm in ${vml}; do
+        echo calling: ssh ${KC_USER}@${h} "virsh define $vm"
+        ssh -q ${KC_USER}@${h} "virsh define $vm"
+      done
+    done  
+  done  
+fi
+exit 0
+

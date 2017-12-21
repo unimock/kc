@@ -1,0 +1,24 @@
+#!/bin/bash
+
+if [ "$1" = "" ] ; then
+  echo " usage: `basename $0`  bond|gluster"
+  exit 0
+fi
+
+if [ "$1" = "bond" ] ; then
+  cat /proc/net/bonding/bond0
+  echo "---"
+  cat /proc/net/bonding/bond1
+  exit 0
+fi
+
+if [ "$1" = "gluster" ] ; then
+  gluster volume status cust
+  echo "---"
+  gluster volume info   cust
+  echo "---"
+  gluster volume heal   cust info
+  exit 0
+fi
+
+

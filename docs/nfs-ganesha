@@ -1,0 +1,48 @@
+#!/bin/bash
+####################################################
+#
+# nfs-ganesha
+#
+# http://docs.gluster.org/en/latest/Administrator%20Guide/NFS-Ganesha%20GlusterFS%20Integration/
+#add-apt-repository ppa:gluster/glusterfs-coreutils
+add-apt-repository -y ppa:gluster/libntirpc-1.5
+add-apt-repository -y ppa:gluster/nfs-ganesha-2.5
+apt-get update
+apt-get install -y nfs-ganesha nfs-ganesha-gluster #glusterfs-coreutils nfs-ganesha-fsal 
+tail -f /var/log/ganesha/ganesha.log
+vi /etc/ganesha/ganesha.conf
+service nfs-ganesha stop
+service nfs-ganesha start
+showmount -e localhost
+gluster volume set cust features.cache-invalidation on
+####################################################
+
+vi /etc/ganesha/ganesha.conf
+EXPORT
+{
+        # Export Id (mandatory, each EXPORT must have a unique Export_Id)
+        Export_Id = 77;
+        # Exported path (mandatory)
+        Path = /kvm-tsp0;
+        # Required for access (default is None)
+        # Could use CLIENT blocks instead
+        Access_Type = RW;
+        Squash = No_root_squash; # To enable/disable root squashing
+        Disable_ACL = TRUE;  # To enable/disable ACL
+        Pseudo = "/kvm-tsp0";  # NFSv4 pseudo path for this export. Eg: "/test_volume_pseudo"
+        Protocols = "3","4" ;    # NFS protocols supported
+        Transports = "UDP","TCP" ; # Transport protocols supported
+        SecType = "sys";     # Security flavors supported
+        # Exporting FSAL
+        FSAL {
+                name = GLUSTER;
+                hostname = "10.10.10.1";  # IP of one of the nodes in the trusted pool
+                volume = "cust";  # Volume name. Eg: "test_volume"
+        }
+
+}
+
+
+
+
+

@@ -1,0 +1,9 @@
+
+/etc/network/interfaces
+/etc/hosts
+/etc/hostname
+/root/.ssh
+/etc/glusterfs/glusterd.vol
+/etc/fstab
+/etc/cron.d/kc
+

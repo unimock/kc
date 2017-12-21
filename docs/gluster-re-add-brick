@@ -1,0 +1,31 @@
+#!/bin/bash
+####################################################
+#
+# Re-add a brick
+#
+# https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/
+#
+# on kvm1:
+gluster volume remove-brick cust replica 1 gfs2:/srv/.bricks/cust force
+gluster volume info cust
+gluster peer detach gfs2
+# on kvm2:
+umount /cust
+rm -Rvf /srv/.bricks/cust
+init 6
+# on kvm1:
+gluster peer probe gfs2
+gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
+# on kvm2
+mount -a
+find /cust
+gluster volume heal cust info 
+####################################################
+#
+# re-activate a volume from a removed host/brick (stand alone) 
+#
+gluster volume create cust gfs2:/srv/.bricks/cust force
+gluster volume start  cust
+mount -a
+ls /cust
+

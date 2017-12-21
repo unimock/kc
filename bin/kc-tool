@@ -1,0 +1,26 @@
+#!/bin/bash
+
+if [ "$1" = "" ] ; then
+  echo " usage: `basename $0` <domain> kvm1|kvm2"
+  exit 0
+fi
+
+if [ "$1" = "migrate" ] ; then
+  echo virsh migrate --live $2 --persistent qemu+ssh://$3/system
+  exit $?
+fi
+
+if [ "$1" = "restore" ] ; then
+
+  DOM="$2"
+
+  echo virsh shutdown $DOM
+  echo virsh destroy  $DOM
+  echo virsh undefine $DOM
+
+  echo virsh define --file /xxx/ubuntu/2017-12-06.111021/ubuntu.xml
+  echo rm -f /cust/images/ubuntu.qcow2
+  echo cp -v /xxx/ubuntu/2017-12-06.111021/ubuntu.qcow2 /cust/images/
+  echo virsh start    $DOM
+  exit 0
+fi

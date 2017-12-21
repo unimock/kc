@@ -51,12 +51,10 @@ _umount()
 }
 #############################
 _status()
-
-  {
-
+{
   FI=${KC_TSP_DIR}/config/gluster.conf
   if [ ! -e $FI ] ; then
-    echo "error: missing uuid definition file <$FI>"
+    echo "error: missing gluster definition file <$FI>"
     exit 0
   fi
   . $FI
@@ -113,7 +111,22 @@ fi
 
 date
 _status
+
 _mount
+
+#
+# backup ISOs
+#
+for h in $HOSTS ; do
+  mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
+  ssh -q ${KC_USER}@${h} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${h}"
+done
+rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
+mkdir -p $MPOINT/ISOs
+rsync -av ${KC_TSP_DIR}/ISOs/  $MPOINT/ISOs
+mkdir -p $MPOINT/config
+rsync -av ${KC_TSP_DIR}/ISOs/  $MPOINT/ISOs
+
 echo "===================================================================="
   for h in $HOSTS ; do
     vms=$( ssh -q ${KC_USER}@${h} "virsh list --all --name" )

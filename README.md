@@ -17,6 +17,6 @@ It only works as a wrapper for libvirt for convenient usage.
 ```
 git clone https://github.com/unimock/kc.git /opt/kc
 /opt/dc/bin/kc-install init     # initialize kc environment
-/opt/dc/bin/kc-install packages # install docker-de (edge)
+/opt/dc/bin/kc-install packages # install additional packages
 . /etc/profile                  # or re-login
 ```

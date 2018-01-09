@@ -1,13 +1,6 @@
 #!/bin/bash
 
-hostname=`hostname`
-MIP=$( host ${hostname} | sed -e "s/.*\ //" )
-
-#echo "kvm-controller: $AIP , me: $MIP"
-#if [ "$AIP" != "$MIP" ] ; then
-#  echo "I am not the master kvm controller. Exiting."
-#  exit 0
-#fi
+global_error_marker=0
 
 if [ "$1" = "" ] ; then
   echo ""
@@ -19,6 +12,7 @@ fi
 
 if [ ! -e ${KC_TSP_DIR}/config/hosts.conf ] ; then
   echo "error: missing hosts config <${KC_TSP_DIR}/config/hosts.conf>"
+  echo "#result=ERROR"
   exit 1
 fi
 
@@ -66,5 +60,14 @@ if [ "$1" = "define" -o "$1" = "complete" ] ; then
     done  
   done  
 fi
+
+if [ "$global_error_marker" = "0" ] ; then
+  echo "#result=OK"
+else
+  echo "#result=ERROR"
+fi
+exit $global_error_marker
+
+
 exit 0
 

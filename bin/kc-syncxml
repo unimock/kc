@@ -1,6 +1,6 @@
 #!/bin/bash
-
-global_error_marker=0
+. /opt/kc/funcs/script_funcs
+sf_start
 
 if [ "$1" = "" ] ; then
   echo ""
@@ -12,8 +12,8 @@ fi
 
 if [ ! -e ${KC_TSP_DIR}/config/hosts.conf ] ; then
   echo "error: missing hosts config <${KC_TSP_DIR}/config/hosts.conf>"
-  echo "#result=ERROR"
-  exit 1
+  sf_set_error
+  sf_end
 fi
 
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
@@ -61,13 +61,5 @@ if [ "$1" = "define" -o "$1" = "complete" ] ; then
   done  
 fi
 
-if [ "$global_error_marker" = "0" ] ; then
-  echo "#result=OK"
-else
-  echo "#result=ERROR"
-fi
-exit $global_error_marker
-
-
-exit 0
+sf_end
 

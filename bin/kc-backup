@@ -1,4 +1,6 @@
 #!/bin/bash
+. /opt/kc/funcs/script_funcs
+sf_start
 
 . /opt/kc/etc/config
 
@@ -21,7 +23,8 @@ _mount()
   FI=${KC_TSP_DIR}/config/backup-uuids.conf
   if [ ! -e $FI ] ; then
     echo "error: missing uuid definition file <$FI>"
-    exit 0
+    sf_set_error
+    sf_end
   fi 
   _mount=0
   for UUID in $( cat $FI ) ; do
@@ -38,7 +41,7 @@ _mount()
   done
   if [ "${_mount}" != "1" ] ; then
     echo "no backup hd found"
-    exit 0
+    sf_end
   fi 
 }
 #############################
@@ -55,7 +58,8 @@ _status()
   FI=${KC_TSP_DIR}/config/gluster.conf
   if [ ! -e $FI ] ; then
     echo "error: missing gluster definition file <$FI>"
-    exit 0
+    sf_set_error
+    sf_end
   fi
   . $FI
   #
@@ -65,7 +69,8 @@ _status()
   for i in $list ; do
     if [ "$i" != "Connected" ] ; then
       echo "gluster status error <$i>"
-      exit 1
+      sf_set_error
+      sf_end
     fi
   done
   echo "gluster_status=Connected"
@@ -78,7 +83,8 @@ _status()
   for i in $list ; do count=count+${i} ; done
   if [ "$count" != "0" ] ; then
     echo "gluster not in sync (entries=$count)"
-    exit 1
+    sf_set_error
+    sf_end
   fi
   echo "gluster_entries=0"
 }
@@ -160,7 +166,8 @@ echo "===================================================================="
             if [ -f ${img}.backup ] ; then
                echo "error: ${img}.backup from VM ${vm} already exists"
                _umount
-               exit 1
+               sf_set_error
+               sf_end
             fi
         done
         if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
@@ -203,7 +210,8 @@ echo "===================================================================="
                 if [ "${chk}" != "${img}" ] ; then
                   echo "error: blockcommit for image: <${img}>"
                   _umount
-                  exit 1
+                  sf_set_error
+                  sf_end
                 fi 
                 img=${img%.qcow2} ; img=${img%.img} 
                 echo "remove snapshot image: <${img}.backup>"
@@ -226,5 +234,14 @@ if [ -d /root/logs ] ; then
   echo "${DAT} ${INFO_HD_NAME}" >> /root/logs/kc-backup.rep
 fi
 
-exit 0
+if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
+  . ${KC_TSP_DIR}/config/kc-backup.conf
+  sendemail -f ${KC_BACKUP_FROM}                       \
+            -t ${KC_BACKUP_TO}                         \
+            -s ${KC_BACKUP_SMTP}                       \
+            -u "kc-backup: <`hostname`> (errors=TODO)" \
+            -o message-file=/root/logs/kc-backup.rep   \
+            -a              /root/logs/kc-backup.rep
+fi
+sf_end
 

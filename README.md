@@ -20,7 +20,18 @@ git clone https://github.com/unimock/kc.git /opt/kc
 /opt/kc/bin/kc-install packages # install additional packages
 . /etc/profile                  # or re-login
 ```
+## Utilities
 
+```
+ kc-visrh ls               # list VMs
+ kc-virsh mig kvm1 kvm2    # migrate VMs from kvm1 to kvm2 
+ 
+ kc-status gluster         # display gluster status
+ kc-status bond            # display bond status
+
+ kc-syncxml complete       # sync VMs definition files between hosts
+
+```
 
 ## Backup
 ### Initialize a backup device

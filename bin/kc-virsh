@@ -57,6 +57,7 @@ if [ "$1" = "mig" ] ; then
   kc-syncxml undefine
   cmd_for_vms_on_host ${source} "virsh migrate --live <DOMAIN> --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system"
   cmd_for_vms_on_host ${target} "virsh autostart <DOMAIN>"
+  chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/* 
   kc-syncxml export
   kc-syncxml define
   exit 0

@@ -16,7 +16,7 @@ if [ "$1" = "bionic" ] ; then
 fi
 
 if [ "$1" = "ubuntu" ] ; then
-  wget http://releases.ubuntu.com/16.04/ubuntu-16.04.3-server-amd64.iso
+  wget http://releases.ubuntu.com/16.04/ubuntu-16.04.4-server-amd64.iso
   exit 0
 fi
 if [ "$1" = "alpine" ] ; then

@@ -1,0 +1,178 @@
+#!/bin/bash
+. /opt/kc/etc/config
+
+##########################################################################################################
+if [ "$1" != "server" -o "$1" = ""  ] ; then
+  echo "Usage:"
+  echo "  `basename $0` [command]"
+  echo ""
+  echo "Available Commands:"
+  echo "  server      Manage servers"
+  echo ""
+  echo "Flags:"
+  echo "  --help                 help for `basename $0`"
+  echo ""
+  echo "Use \"`basename $0` [command] --help\" for more information about a command."
+  echo ""
+  exit 0
+fi
+MCMD="$1"
+shift
+##########################################################################################################
+if [ "$1" = "" -o "$1" = "--help" ] ; then
+  echo "Usage:"
+  echo "  `basename $0` $MCMD [command]"
+  echo ""
+  echo "Available Commands:"
+  echo "  create         Create a server"
+  echo "  delete         Delete image and server"
+  echo "  list           List servers"
+  echo "  poweroff       Poweroff a server"
+  echo "  poweron        Poweron a server"
+  echo "  shutdown       Shutdown a server"
+  echo "  reboot         Reboot a server"
+  echo ""
+  echo "Flags:"
+  echo "  --help                 help for `basename $0`"
+  echo ""
+  echo "Use \"`basename $0` [command] --help\" for more information about a command."
+  echo ""
+  exit 0
+fi
+CMD=$1
+shift
+##########################################################################################################
+if [ "$CMD" = "list" ] ; then
+  virsh list --all
+  exit 0
+fi
+##########################################################################################################
+if [ "$CMD" = "poweroff" -o "$CMD" = "poweron" -o "$CMD" = "shutdown" -o "$CMD" = "reboot" -o "$CMD" = "delete" ] ; then
+  if [ "$1" = "--help" -o "$1" = "" ] ; then
+    echo "Usage:"
+     echo "  `basename $0` $MCMD $CMD SERVER"
+    exit 0 
+  fi
+  HNAME=$1
+  case $CMD in
+    poweroff) virsh shutdown ${HNAME} ;; 
+    poweron)  virsh start    ${HNAME} ;;
+    shutdown) virsh shutdown ${HNAME} ;;
+    reboot)   virsh reboot   ${HNAME} ;;
+    delete)   virsh shutdown ${HNAME} ; virsh undefine  ${HNAME} ; rm -v ${KC_TSP_DIR}/images/${HNAME}.qcow2 ;;
+  esac
+
+fi
+##########################################################################################################
+if [ "$CMD" = "create" ] ; then
+  IMAGE="kcloud-ubuntu-16.04"
+  SIZE="8G"
+  CPU="2"
+  MEM="2G"
+  SWAP="2G"
+  AKEY="/root/.ssh/id_rsa.pub"
+  if [ "$1" = "--help" -o "$1" = "" ] ; then
+    echo "Usage:"
+     echo "  `basename $0` $MCMD $CMD FLAGS"
+     echo ""
+     echo "Flags:"
+     echo "  --help            help for create"
+     echo "  --name string     Server name"     
+     echo "  --image string    Image name [$IMAGE]"
+     echo "  --hdd string      HDD size [$SIZE]"
+     echo "  --vcpu string     CPUs [$CPU]"
+     echo "  --ram string      RAM size [$MEM]"
+     echo "  --swap string     swap size [$SWAP]"
+     echo "  --auth_keys file  location of authrized_key file [$AKEY]"
+     echo ""
+    exit 0
+  fi
+
+  while test -n "$1"; do
+    case "$1" in
+          --name)      shift ; HNAME=$1  ; shift ;;
+          --image)     shift ; IMAGE=$1  ; shift ;;
+          --hdd)       shift ; SIZE=$1   ; shift ;;
+          --vcpu)      shift ; CPU=$1    ; shift ;;
+          --ram)       shift ; MEM=$1    ; shift ;;
+          --swap)      shift ; SWAP=$1   ; shift ;;
+          --auth_keys) shift ; AKEY=$1   ; shift ;;
+          *)              break;;
+    esac
+  done
+  if [ "$HNAME" = "" ] ; then echo "error: --name not given" ; exit 1 ; fi
+
+  echo "creating server $HNAME with: IMAGE=$IMAGE SIZE=$SIZE CPU=$CPU MEM=$MEM SWAP=$SWAP AKEY=$AKEY ...."
+
+  # TODO: check if image or machine exist already 
+  TDIR=$( mktemp -d )
+
+  cp -va ${KC_TSP_DIR}/images/${IMAGE}.qcow2  ${KC_TSP_DIR}/images/${HNAME}.qcow2
+  qemu-img resize ${KC_TSP_DIR}/images/${HNAME}.qcow2  $SIZE
+  cp -va ${KC_TSP_DIR}/images/${HNAME}.qcow2      ${TDIR}/x.qcow2
+  virt-resize --expand /dev/sda1 ${TDIR}/x.qcow2 ${KC_TSP_DIR}/images/${HNAME}.qcow2
+  rm ${TDIR}/x.qcow2
+
+  MNT=${TDIR}/mnt
+  mkdir -p $MNT
+  guestmount -a ${KC_TSP_DIR}/images/${HNAME}.qcow2 -m /dev/sda1             $MNT
+  echo "${HNAME}"  > $MNT/etc/hostname
+  mkdir -p $MNT/root/.ssh
+  cp ${AKEY}  $MNT/root/.ssh/authorized_keys
+  chown root:root $MNT/root/.ssh/authorized_keys
+  echo "create swap file ..."
+  cp -a $MNT/etc/rc.local $MNT/etc/rc.local-orig
+  echo "#!/bin/sh"                         > $MNT/etc/rc.local
+  echo "fallocate -l $SWAP /swapfile ; chmod 600 /swapfile ; mkswap /swapfile ; swapon /swapfile ; echo '/swapfile none swap sw 0 0' >> /etc/fstab" >> $MNT/etc/rc.local
+  echo "mv -f /etc/rc.local-orig /etc/rc.local"  >> $MNT/etc/rc.local
+  echo "exit 0"                                  >> $MNT/etc/rc.local
+  # umount
+  guestunmount $MNT
+  rmdir $MNT
+  #
+  XML=${TDIR}/x.xml
+  virsh dumpxml ${IMAGE}                                   > $XML
+  sed -i "s|<name>.*</name>|<name>${HNAME}</name>|g"   $XML
+  # hardware addresses need to be removed, libvirt will assign
+  # new addresses automatically
+  sed -i '/uuid/d'                                                    $XML
+  sed -i '/mac address/d'                                             $XML
+  sed -i "s|${IMAGE}.qcow2|${HNAME}.qcow2|g"                 $XML
+  M=$( echo $MEM  | numfmt --from=iec | numfmt --to-unit=1024 )
+  sed -i "s|<memory unit='KiB'>.*</memory>|<memory unit='KiB'>${M}</memory>|" $XML
+  sed -i "s|<currentMemory unit='KiB'>.*</currentMemory>|<currentMemory unit='KiB'>${M}</currentMemory>|" $XML
+  sed -i "s|<vcpu placement='static'>.*</vcpu>|<vcpu placement='static'>$CPU</vcpu>|" $XML
+  virsh define --file $XML
+  rm $XML
+  rmdir ${TDIR}
+  virsh start    ${HNAME}
+fi
+##########################################################################################################
+#if [ "$CMD" = "pre" ] ; then
+  #TNAME=kcloud-ubuntu-16.04
+  #virsh shutdown  ${TNAME}
+  #virsh undefine  ${TNAME}
+  #rm                       ${KC_TSP_DIR}/images/$TNAME.qcow2
+  #qemu-img create -f qcow2 ${KC_TSP_DIR}/images/$TNAME.qcow2 5G
+  #chown libvirt-qemu:kvm   ${KC_TSP_DIR}/images/$TNAME.qcow2
+  # KVM:
+  #   HD: kcloud-ubuntu-16.04.qcow2
+  #   Nme: kcloud-ubuntu-16.04
+  #   Add Hardware -> Channel -> guest-agent
+  #   Guest-Net
+  # Ubuntu-Installation:
+  #   * English, German Keyboard
+  #   * Nmae: ubuntu
+  #   * madmin #a
+  #   * nur / Partition, no swap , bootable-Flag
+  #   * openssh-server
+  #   * Login madmin #a
+  #   * sudo passwd root #root
+  #   * exit
+  #   * login root
+  #   * deluser  --remove-all-files madmin
+  #   * apt-get update ; apt-get -y dist-upgrade ; apt-get autoremove ; apt-get install ; apt-get install qemu-guest-agent
+  # init 0
+#fi
+exit 0
+

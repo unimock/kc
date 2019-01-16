@@ -147,9 +147,10 @@ echo "===================================================================="
         if [[ $vm == \[*@kvm[1-9]\] ]] ; then
           continue ;
         fi
-        state=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" ) 
+        state=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+        _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
         echo "####################################################"
-        echo "#  $vm @ ${h} ($state) "
+        echo "#  $vm @ ${h} ($state) ${_DATE}"
         echo "####################################################"
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs

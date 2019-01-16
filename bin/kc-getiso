@@ -10,8 +10,9 @@ if [ "$1" = "" ] ; then
 fi
 
 if [ "$1" = "bionic" ] ; then
-  rm -f bionic-server-amd64.iso
-  wget http://cdimage.ubuntu.com/ubuntu-server/daily/current/bionic-server-amd64.iso
+  #rm -f bionic-server-amd64.iso
+  #wget http://cdimage.ubuntu.com/ubuntu-server/daily/current/bionic-server-amd64.iso
+  wget http://releases.ubuntu.com/18.04/ubuntu-18.04-live-server-amd64.iso
   exit 0
 fi
 

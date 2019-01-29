@@ -114,16 +114,19 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ### Initialize a additional backup device
 ```
-  lsblk
+  lsblk          # get the device name for DEV
   DEV=/dev/sdc
   INFO_HD_NAME="atk-bup-3"
   NAME="kvm-bup"
+  lsblk          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
+  vi /tsp0/config/backup-uuids.conf
+
   dd if=/dev/urandom bs=1M count=8 of=$DEV
   cryptsetup luksFormat -y $DEV #pw siehe /tsp0/config/backup-passwd.conf
   cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
   mkfs.ext4 /dev/mapper/$NAME
     mount /dev/mapper/$NAME /backup
-  echo "$INFO_HD_NAME" > /backup/INFO.cfg
+  echo "INFO_HD_NAME=\"$INFO_HD_NAME\"" > /backup/INFO.cfg
   umount /backup
   cryptsetup luksClose $NAME
 

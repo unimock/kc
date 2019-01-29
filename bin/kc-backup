@@ -240,7 +240,7 @@ if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
   sendemail -f ${KC_BACKUP_FROM}                       \
             -t ${KC_BACKUP_TO}                         \
             -s ${KC_BACKUP_SMTP}                       \
-            -u "kc-backup: <`hostname`> (errors=TODO)" \
+            -u "kc-backup @ `hostname`" \
             -o message-file=/root/logs/kc-backup.rep   \
             -a              /root/logs/kc-backup.rep
 fi

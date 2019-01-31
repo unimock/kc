@@ -74,6 +74,20 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ```
 
+## Administration
+
+### dist-upgrade
+
+```
+ # @kvm1: (non productive)
+ apt-get update ; apt-get autoremove ; apt-get dist-upgrade
+ init 6
+ kc-status bond
+ kc-status gluster
+ # change the productive node. migrate VMs from kvm2 to kvm1
+ kc-virsh mig kvm2 kvm1
+```
+
 ## Utilities
 
 ```

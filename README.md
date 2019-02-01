@@ -76,6 +76,27 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Administration
 
+### glusterd
+
+```
+ kc-status gluster
+
+
+
+ glusterd -V
+ gluster volume status
+ gluster volume info
+ gluster peer probe gfs2
+ gluster peer probe gfs1
+ gluster peer status
+
+ tail -f /var/log/glusterfs/glusterd.log
+ 
+ systemctl status glusterd
+ systemctl stop   glusterd
+ systemctl start  glusterd
+```
+
 ### dist-upgrade
 
 ```

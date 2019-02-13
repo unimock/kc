@@ -74,6 +74,11 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ```
 
+### install netdata (ubuntu-16.04 LTS)
+
+see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
+
+
 ## Administration
 
 ### glusterd

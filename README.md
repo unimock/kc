@@ -74,10 +74,31 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ```
 
-### install netdata (ubuntu-16.04 LTS)
+### install/uppdate netdata (ubuntu-16.04 LTS)
 
-see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
+# see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
 
+```
+ #
+ # install:
+ #
+ apt-get update
+ apt-get install -y zlib1g-dev uuid-dev libmnl-dev gcc make git autoconf autogen automake pkg-config curl jq nodejs
+ git clone https://github.com/firehol/netdata.git --depth=1 /root/netdata
+ cd /root/netdata
+ ./netdata-installer.sh
+ killall netdata
+ systemctl enable netdata
+ systemctl start  netdata
+ #
+ # update:
+ #
+ systemctl stop   netdata
+ cd /root/netdata
+ git pull
+ ./netdata-installer.sh
+ systemctl start  netdata
+```
 
 ## Administration
 

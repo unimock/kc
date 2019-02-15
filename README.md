@@ -71,12 +71,11 @@ It only works as a wrapper for libvirt for convenient usage.
 
  echo "localhost:${GLUSTER_VOL} /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0" >> /etc/fstab
  mount -a
-
 ```
 
-### install/uppdate netdata (ubuntu-16.04 LTS)
+### install/update netdata (ubuntu-16.04 LTS)
 
-# see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
+see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
 
 ```
  #
@@ -107,8 +106,6 @@ It only works as a wrapper for libvirt for convenient usage.
 ```
  kc-status gluster
 
-
-
  glusterd -V
  gluster volume status
  gluster volume info
@@ -138,7 +135,7 @@ It only works as a wrapper for libvirt for convenient usage.
 ## Utilities
 
 ```
- kc-visrh ls               # list VMs
+ kc-virsh ls               # list VMs
  kc-virsh mig kvm1 kvm2    # migrate VMs from kvm1 to kvm2 
  
  kc-status gluster         # display gluster status

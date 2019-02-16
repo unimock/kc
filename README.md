@@ -135,7 +135,7 @@ It only works as a wrapper for libvirt for convenient usage.
  kc-virsh mig kvm2 kvm1
 ```
 
-## Utilities
+## kc utilities
 
 ```
  kc-visrh ls               # list VMs
@@ -151,6 +151,16 @@ It only works as a wrapper for libvirt for convenient usage.
 
 
 ```
+
+## vish
+
+```
+ virsh list --all --name           # list all domains
+ virsh start|shutdowm <domain>     # start/stop a domain
+ virsh domstate <domain>
+ virsh domtime  <domain>
+```
+ 
 
 ## vm stuff
 ```

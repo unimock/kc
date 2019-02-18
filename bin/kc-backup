@@ -8,7 +8,7 @@ GLUSTER_VOLUME="cust"
 MPOINT=/backup
 NAME="kvm-bup"
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
-EXCLUDE="_ramdisk.qcow2"
+EXCLUDE="*_temp_disk.qcow2"
 
 #############################
 _usage()
@@ -156,8 +156,8 @@ echo "===================================================================="
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | grep -v ${EXCLUDE} | awk '/^file +disk/ {print $3}' )
-        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | grep -v ${EXCLUDE} | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
+        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print $3}' )
+        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
         #
         # Test if there exists already a file with extension .backup
         #
@@ -195,11 +195,15 @@ echo "===================================================================="
           fi
           for d in ${disc[@]}; do
             img=${imgs[${d}]}
-            if [ "$CMD" = "simul" ] ; then
-              echo rsync -av ${img} $MPOINT/domains/${vm}/
+            if [[ "$(basename $img)" == $EXCLUDE ]]; then
+              echo "skipping backup of image: <$img>, because of EXCLUDE setting <$EXCLUDE>"
             else
-              echo "copy ${img} to $MPOINT/domains/${vm}/ ..."
-              rsync -av ${img} $MPOINT/domains/${vm}/   # --progress
+              if [ "$CMD" = "simul" ] ; then
+                echo rsync -av ${img} $MPOINT/domains/${vm}/
+              else
+                echo "copy ${img} to $MPOINT/domains/${vm}/ ..."
+                rsync -av ${img} $MPOINT/domains/${vm}/   # --progress
+              fi
             fi
             if [ "$state" != "shut off" ] ; then
               if [ "$CMD" = "simul" ] ; then

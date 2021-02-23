@@ -202,17 +202,30 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
   DEV=/dev/sdc
   INFO_HD_NAME="atk-bup-3"
   NAME="kvm-bup"
-  blkid          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
-  vi /tsp0/config/backup-uuids.conf
 
   dd if=/dev/urandom bs=1M count=8 of=$DEV
   cryptsetup luksFormat -y $DEV #pw siehe /tsp0/config/backup-passwd.conf
   cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
+
+  blkid          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
+  vi /tsp0/config/backup-uuids.conf
+
   mkfs.ext4 /dev/mapper/$NAME
+  mkdir -p /backup
   mount /dev/mapper/$NAME /backup
   echo "INFO_HD_NAME=\"$INFO_HD_NAME\"" > /backup/INFO.cfg
   cat /backup/INFO.cfg
   umount /backup
+  cryptsetup luksClose $NAME
+  rmdir /backup
+  # test
+  cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
+  mkdir -p /backup
+  mount /dev/mapper/$NAME /backup
+  df -h /backup
+  cat  /backup/INFO.cfg
+  umount /backup
+  rmdir /backup
   cryptsetup luksClose $NAME
 
 ```

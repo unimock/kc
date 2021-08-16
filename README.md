@@ -230,6 +230,65 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
 
 ```
 
+## gluster administration
+### remove brick of an existing replicated volume (cust)
+
+[https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/](URL)
+
+```
+# SSH into the glusterfs machine you wish to keep and do:
+# @kvm1 (gfs1):
+gluster peer status
+gluster volume info
+gluster volume remove-brick cust replica 1 gfs2:/srv/.bricks/cust force
+gluster volume info cust
+gluster peer detach gfs2
+```
+
+### re-create brick lvm-partition on **kvm2**
+```
+# @kvm2 (gfs2):
+service glusterd stop
+umount /srv/.bricks
+lsblk
+lvdisplay
+lvremove /dev/data/tsp0
+vgremove data
+vgdisplay
+pvremove  /dev/sdb
+pvdisplay
+vgcreate data  /dev/sdb
+lvcreate -n tsp0 -l100%FREE data
+mkfs.ext4 /dev/data/tsp0
+mount /srv/.bricks
+service glusterd start
+```
+
+### add brick to an existing replicated volume (cust)
+```
+# @kvm1 (gfs1):
+gluster peer probe gfs2
+gluster volume status
+#??? @kvm2: gluster volume stop   cust
+#??? @kvm2: gluster volume delete cust
+gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
+gluster vol status
+
+# @kvm2 (gfs2)
+mount -a
+find /tsp0
+gluster volume heal cust info
+```
+
+### testing
+```
+#kc-status gluster
+gluster volume status cust
+gluster volume info   cust
+gluster volume heal   cust info
+```
+
+
 ## Hints
 * nach Migrate ist Autostart der VM nicht mehr aktiv
 * Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen

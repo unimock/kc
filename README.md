@@ -291,7 +291,6 @@ gluster volume heal   cust info
 
 
 ## Hints
-* nach Migrate ist Autostart der VM nicht mehr aktiv
 * Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen
 * nach Aktivieren eines Snapshot muss vor einem Migrate erst ein Restart der vm durchgeführt werden.
 

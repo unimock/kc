@@ -148,7 +148,7 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
  kc-getiso ubuntu
 ```
 
-## vish
+## virsh
 
 ```
  virsh list --all --name           # list all domains

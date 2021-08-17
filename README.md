@@ -39,7 +39,7 @@ It only works as a wrapper for libvirt for convenient usage.
  # (/etc/network/interfaces)
  brctl show
  cat /proc/net/bonding/bond0
- dc-status
+ kc-status bond
 ```
 ### install glusterfs
 ```

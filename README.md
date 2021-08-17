@@ -272,11 +272,6 @@ gluster peer probe gfs2
 gluster volume status
 gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
 gluster vol status
-
-# @kvm2 (gfs2)
-mount -a
-find /tsp0
-gluster volume heal cust info
 ```
 
 ### testing
@@ -286,7 +281,6 @@ gluster volume status cust
 gluster volume info   cust
 gluster volume heal   cust info
 ```
-
 
 ## Hints
 * Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen

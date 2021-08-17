@@ -57,6 +57,7 @@ It only works as a wrapper for libvirt for convenient usage.
  vgcreate data  /dev/sdb
  #lvcreate -n tsp0 -L 1T data
  lvcreate -n tsp0 -l100%FREE data
+ umount /dev/data/tsp0
  mkfs.ext4 /dev/data/tsp0
  mkdir -p /srv/.bricks
  echo "/dev/data/tsp0 /srv/.bricks ext4 defaults 0 1" >> /etc/fstab

@@ -270,8 +270,6 @@ service glusterd start
 # @kvm1 (gfs1):
 gluster peer probe gfs2
 gluster volume status
-#??? @kvm2: gluster volume stop   cust
-#??? @kvm2: gluster volume delete cust
 gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
 gluster vol status
 

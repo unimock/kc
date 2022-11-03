@@ -160,9 +160,10 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
 ## create a disk from shell
 
 ```
- qemu-img create -f qcow2 /tsp0/images/bse1_temp_disk.qcow2 100G
- qemu-img info /tsp0/images/bse1_temp_disk.qcow2 100G
- chown libvirt-qemu:kvm /tsp0/images/bse1_temp_disk.qcow2
+IMG=/tsp0/images/bse1_temp_disk.qcow2
+ qemu-img create -f qcow2 $IMG 100G
+ qemu-img info $IMG 100G
+ chown libvirt-qemu:kvm $IMG
  # assign disk to the vm with virtual machine manager
  # assign and mount disk from the the vm
  hsh bse1

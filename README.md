@@ -287,3 +287,17 @@ gluster volume heal   cust info
 * Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen
 * nach Aktivieren eines Snapshot muss vor einem Migrate erst ein Restart der vm durchgeführt werden.
 
+### repair brocken backup
+
+```
+ ssh kvm1
+ cd /tsp0/images
+ ls *.backup
+
+ DOM="vw"
+ virsh domblklist  ${DOM} --details
+ virsh blockcommit ${DOM} vdb  --active --wait --pivot --verbose
+ virsh domblklist  ${DOM} --details
+ rm /tsp0/images/xxxx.backup
+
+```

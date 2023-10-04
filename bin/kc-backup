@@ -237,7 +237,7 @@ date
 
 if [ -d /root/logs ] ; then
   DAT=$(date +"%Y-%m-%d %H:%M:%S")
-  echo "${DAT} ${INFO_HD_NAME}" >> /root/logs/kc-backup.rep
+  sed -i "1s/^/${DAT} ${INFO_HD_NAME}\n/" /root/logs/kc-backup.rep
 fi
 
 if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then

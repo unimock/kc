@@ -44,6 +44,7 @@ if [ "$CMD" = "packages" ] ; then
   update-locale LC_ALL=en_US.UTF-8
   apt-get purge -y lxd lxd-client snapd
   apt-get install -y software-properties-common
+  apt-get install -y cloud-utils cloud-image-utils virtinst libosinfo-bin libosinfo-tools
   add-apt-repository -y ppa:gluster/glusterfs-3.12
   apt-get update
   apt-get install -y glusterfs-server

@@ -121,6 +121,13 @@ _status
 _mount
 
 #
+# cleanup orphaned backup files from backup device
+#
+list=$(find /backup/ -type f -name ".*qcow2.*")
+for i in $list ; do
+  rm $i
+done
+#
 # backup rfs-changes
 #
 for h in $HOSTS ; do

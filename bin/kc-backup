@@ -239,13 +239,13 @@ echo "===================================================================="
 echo "===================================================================="
 find   $MPOINT -ls
 df -h  $MPOINT
-usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use")
+usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
 _umount
 date
 
 if [ -d /root/logs ] ; then
   DAT=$(date +"%Y-%m-%d %H:%M:%S")
-  sed -i "1s/^/${DAT} ${INFO_HD_NAME} (${usage_pcent}\n/" /root/logs/kc-backup.rep
+  sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" /root/logs/kc-backup.rep
 fi
 
 if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then

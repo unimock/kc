@@ -100,6 +100,23 @@ _status
               ssh -q ${KC_USER}@${h} "virsh shutdown  $vm"
             fi
           fi
+          # wait until system is down
+          # timeout 60s
+          for i in {0..60} ; do
+            sleep 1
+            echo "Number: $i"
+            s=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+            echo "  wait until system is down : i=$i <$s>"
+            if [ "$s" = "shut off" ] ; then
+              break ;
+            fi
+            if [ $i -ge 60 ] ; then
+              echo "error wait for off!!!!"
+              exit 1
+            fi
+          done
+
+
           for d in ${disc[@]}; do
             img=${imgs[${d}]}
             #if [[ "$(basename $img)" == $EXCLUDE ]]; then

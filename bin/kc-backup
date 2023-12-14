@@ -26,7 +26,11 @@ _mount()
     echo "error: missing uuid definition file <$FI>"
     sf_set_error
     sf_end
-  fi 
+  fi
+  if [ ! -d $MPOINT ] ; then
+    echo "create mountpoint: $MPOINT"
+    mkdir -p $MPOINT
+  fi
   _mount=0
   for UUID in $( cat $FI ) ; do
     DEV=`blkid  -U $UUID`

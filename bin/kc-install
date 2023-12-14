@@ -5,26 +5,17 @@ if [ "$1" = "" ] ; then
   echo " usage `basename $0` init|packages"
   echo ""
   echo "       init........ initialize kc environment"
-  echo "       packages ... install additional packages"
   echo ""
 fi
 
 CMD="$1"
 if [ "$CMD" = "init" ] ; then
   ##############################################################
-  DCD=/opt/kc
-  if [ -d $DCD ] ; then
-    cd $DCD ; git pull
-  else
-    git clone https://github.com/unimock/kc.git $DCD
-  fi
-  ##############################################################
   FI=/etc/profile.d/kc-profile.sh
   echo -e "\ncreating kc profile <$FI> with following content:"
   rm -f $FI
   mkdir -p `dirname $FI`
   echo 'export PATH=$PATH:/opt/kc/bin'                                       >> $FI
-  echo alias de="'"'__de() { eval "$(docker-machine env $1 )" ; }; __de'"'"  >> $FI
   cat $FI
   . /etc/profile
   ##############################################################
@@ -38,20 +29,3 @@ if [ "$CMD" = "init" ] ; then
   fi
   exit 0
 fi
-##########################################################################################
-if [ "$CMD" = "packages" ] ; then
-  export LC_ALL=en_US.UTF-8
-  update-locale LC_ALL=en_US.UTF-8
-  apt-get purge -y lxd lxd-client snapd
-  apt-get install -y software-properties-common
-  apt-get install -y cloud-utils cloud-image-utils virtinst libosinfo-bin libosinfo-tools
-  add-apt-repository -y ppa:gluster/glusterfs-3.12
-  apt-get update
-  apt-get install -y glusterfs-server
-  #apt-get install -y nfs-common
-  apt-get -y install -y sendemail screen libguestfs-tools
-  apt-get -y dist-upgrade
-  apt-get -y autoremove
-  exit 0
-fi
-

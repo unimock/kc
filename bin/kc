@@ -1,0 +1,56 @@
+#!/bin/bash
+
+#CURROPT=""
+#while [ "$#" -gt 0 ]; do
+#  case "$1" in
+#    -*)  ; shift 1 ;;
+#    --escape)  shift 2 ;;
+#    --*)       shift 1 ;;
+#    *)   CURROPT="$CURROPT \"$1\"" ; shift 1 ;;
+#  esac
+#done
+#eval set -- $CURROPT
+
+if [[ "$1" == "up" && "$2" != "" ]] ; then
+  DOM="$2"
+  virsh start $DOM
+  exit $?
+fi
+
+if [[ "$1" == "down" && "$2" != "" ]] ; then
+  CMD="$1"
+  DOM="$2"
+  state=$( virsh domstate ${DOM} )
+  if [[ "$state" != "shut off" ]] ; then
+    virsh shutdown ${DOM}
+    i=0
+    # wait until system is down, timeout 120s
+    while true ; do
+      i=$(( i + 1 ))
+      sleep 1
+      s=$( virsh domstate ${DOM} )
+      echo "  wait until system is down : i=$i <$s>"
+      if [[ "$s" == "shut off" ]] ; then
+        break ;
+      fi
+      if [ $i -ge 120 ] ; then
+         echo "error wait for off!!!!"
+         exit 1
+      fi
+    done
+  fi
+  exit 0
+fi
+
+if [[ "$1" == "rm" && "$2" != "" ]] ; then
+  CMD="$1"
+  DOM="$2"
+  state=$(virsh domstate $DOM)
+  if [ "$state" != "shut off" ] ; then
+    virsh destroy $DOM
+  fi
+  virsh undefine $DOM --remove-all-storage --checkpoints-metadata --snapshots-metadata
+  exit $?
+fi 
+
+

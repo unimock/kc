@@ -9,18 +9,168 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Requirements
 
- * ubuntu-server 16.04
+ * ubuntu-server 22.04
  * bare metal with VT support
 
 ## Installation
+### minimal ubuntu-22.04 server
+```
+apt-get purge -y snapd
+apt-get update
+apt-get dist-upgrade -y
+apt-get autoremove -y
+apt-get install -y vim
 
-### utilities, tools and  packages
+apt-get install -y locales iputils-ping net-tools rsync vim
+dpkg-reconfigure locales
+locale-gen en_US.UTF-8
 ```
- git clone https://github.com/unimock/kc.git /opt/kc
- /opt/kc/bin/kc-install init     # initialize kc environment
- /opt/kc/bin/kc-install packages # install additional packages
- . /etc/profile                  # or re-login
+### fix ip, hostname,...
+
+https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
+
 ```
+vi /etc/hosts
+vi /etc/hostname
+chmod 600  /etc/netplan/00-installer-config.yaml 
+# apply ssh-keys
+vi /etc/netplan/00-installer-config.yaml
+netplan generate ; netplan apply
+vi /root/.ssh/authorized_keys
+netplan generate
+netplan apply   # WARNING:root:Cannot call Open vSwitch: ovsdb-server.service is not running.
+```
+
+### kvm/libvirt
+
+https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
+
+```
+egrep -c '(vmx|svm)' /proc/cpuinfo
+apt install -y cpu-checker
+kvm-ok
+apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils
+#
+apt-get install -y libguestfs-tools  # virt-customize
+apt-get install -y cloud-image-utils # cloud-localds
+systemctl enable --now libvirtd
+systemctl start        libvirtd
+systemctl status       libvirtd
+ADMIN_USER=madmin 
+usermod -aG kvm     $ADMIN_USER
+usermod -aG libvirt $ADMIN_USER
+
+```
+
+### glusterfs
+
+https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
+
+```
+vi /etc/hosts # "10.10.10.1 node1 10.10.10.2 node2"
+vi /etc/netplan/00-installer-config.yaml
+netplan apply
+
+apt-get install glusterfs-server -y
+systemctl start glusterd
+systemctl enable glusterd
+systemctl status glusterd
+lsblk
+fdisk /dev/sdb
+mkfs.xfs /dev/sdb1
+mkdir /srv/.bricks
+vi /etc/fstab # "/dev/sdb1 /srv/.bricks xfs defaults 0 0"
+mount -a
+df -h
+gluster pool list
+#
+#
+#
+gluster peer probe node2
+gluster pool list
+mkdir /tsp0
+gluster volume create cust replica 2 node1://srv/.bricks/cust node2://srv/.bricks/cust
+# Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
+# See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
+
+gluster volume start
+gluster volume status
+gluster volume info cust
+vi /etc/fstab
+# localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
+# #localhost:cust /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0
+mount -a
+```
+
+### bridges and bonds
+
+https://fabianlee.org/2019/04/01/kvm-creating-a-bridged-network-with-netplan-on-ubuntu-bionic/
+
+```
+vi /etc/netplan/00-installer-config.yaml
+netplan generate ; netplan apply
+
+# 
+
+vi /tmp/host-bridge.xml
+<network>
+  <name>guest-net</name>
+  <forward mode="bridge"/>
+  <bridge name="guest-net"/>
+</network>
+
+# create libvirt network using existing host bridge
+virsh net-define x
+virsh net-start guest-net
+virsh net-autostart guest-net
+
+# state should be active, autostart, and persistent
+virsh net-list --all
+```
+
+### virtnbdbackup
+
+https://github.com/abbbi/virtnbdbackup
+
+```
+cd /tmp
+wget https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_1.9.51-1_all.deb
+dpkg --force-depends -i /tmp/virtnbdbackup_1.9.51-1_all.deb
+apt --fix-broken install
+echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
+echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/local/abstractions/libvirt-qemu
+echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/local/usr.sbin.libvirtd
+
+#
+mkdir /backup
+DOMAIN=test
+virtnbdbackup  -d $DOMAIN -l auto -o /backup
+```
+
+### install netdata
+
+https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04
+
+```
+apt install netdata -y
+vi /etc/netdata/netdata.conf # bind socket ip
+# firefox <ip>:19999
+
+```
+
+### utils and kc environment
+
+```
+apt-get install -y git tree screen swaks
+git clone https://github.com/unimock/kc.git /opt/kc
+/opt/kc/bin/kc-install init     # initialize kc environment
+. /etc/profile                  # or re-login
+```
+
+# TODO
+
+
+
 ### create and deploy ssh keys
 ```
  mkdir /root/.ssh
@@ -58,9 +208,9 @@ It only works as a wrapper for libvirt for convenient usage.
  #lvcreate -n tsp0 -L 1T data
  lvcreate -n tsp0 -l100%FREE data
  umount /dev/data/tsp0
- mkfs.ext4 /dev/data/tsp0
+ mkfs.xfs /dev/data/tsp0
  mkdir -p /srv/.bricks
- echo "/dev/data/tsp0 /srv/.bricks ext4 defaults 0 1" >> /etc/fstab
+ echo "/dev/data/tsp0 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
  mount /srv/.bricks
  gluster peer probe gfs1
  gluster peer probe gfs2
@@ -74,31 +224,6 @@ It only works as a wrapper for libvirt for convenient usage.
  mount -a
 ```
 
-### install/update netdata (ubuntu-16.04 LTS)
-
-see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-lts/
-
-```
- #
- # install:
- #
- apt-get update
- apt-get install -y zlib1g-dev uuid-dev libmnl-dev gcc make git autoconf autogen automake pkg-config curl jq nodejs
- git clone https://github.com/firehol/netdata.git --depth=1 /root/netdata
- cd /root/netdata
- ./netdata-installer.sh
- killall netdata
- systemctl enable netdata
- systemctl start  netdata
- #
- # update:
- #
- systemctl stop   netdata
- cd /root/netdata
- git pull
- ./netdata-installer.sh
- systemctl start  netdata
-```
 
 ## Administration
 
@@ -130,22 +255,20 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
  kc-status bond
  kc-status gluster
  # change the productive node. migrate VMs from kvm2 to kvm1
- kc-virsh mig kvm2 kvm1
+ kc-tool mig kvm2 kvm1
 ```
 
 ## kc utilities
 
 ```
- kc-virsh ls               # list VMs
- kc-virsh mig kvm1 kvm2    # migrate VMs from kvm1 to kvm2 
+ kc-tool ls               # list VMs
+ kc-tool mig kvm1 kvm2    # migrate VMs from kvm1 to kvm2 
  
  kc-status gluster         # display gluster status
  kc-status bond            # display bond status
 
  kc-syncxml complete       # sync VMs definition files between hosts
 
- kc-getiso alpine          # download images
- kc-getiso ubuntu
 ```
 
 ## virsh
@@ -156,26 +279,6 @@ see: https://guides.wp-bullet.com/install-netdata-monitoring-tool-ubuntu-16-04-l
  virsh domstate <domain>
  virsh domtime  <domain>
 ```
-
-## create a disk from shell
-
-```
-IMG=/tsp0/images/bse1_temp_disk.qcow2
- qemu-img create -f qcow2 $IMG 100G
- qemu-img info $IMG
- chown libvirt-qemu:kvm $IMG
- # assign disk to the vm with virtual machine manager
- # assign and mount disk from the the vm
- hsh bse1
- fdisk -l
- fdisk /dev/vdc
- mkfs.ext4 /dev/vdc1
- mkdir /temp_disk ; chmod a+rwx /temp_disk
- echo "/dev/vdc1 /temp_disk          ext4    errors=remount-ro 0       2" >> /etc/fstab
- mount -a
- df -h
- init 6 
-``` 
 
 ## vm stuff
 ```
@@ -192,7 +295,7 @@ IMG=/tsp0/images/bse1_temp_disk.qcow2
   cryptsetup -y -v luksFormat $DEV
   cryptsetup luksOpen $DEV $NAME
   cryptsetup -v status $NAME
-  mkfs.ext4 /dev/mapper/$NAME
+  mkfs.xfs /dev/mapper/$NAME
   mount /dev/mapper/$NAME /backup
   umount /backup
   cryptsetup luksClose $NAME
@@ -212,7 +315,7 @@ IMG=/tsp0/images/bse1_temp_disk.qcow2
   blkid          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
   vi /tsp0/config/backup-uuids.conf
 
-  mkfs.ext4 /dev/mapper/$NAME
+  mkfs.xfs /dev/mapper/$NAME
   mkdir -p /backup
   mount /dev/mapper/$NAME /backup
   echo "INFO_HD_NAME=\"$INFO_HD_NAME\"" > /backup/INFO.cfg
@@ -252,16 +355,7 @@ gluster peer detach gfs2
 # @kvm2 (gfs2):
 service glusterd stop
 umount /srv/.bricks
-lsblk
-lvdisplay
-lvremove /dev/data/tsp0
-vgremove data
-vgdisplay
-pvremove  /dev/sdb
-pvdisplay
-vgcreate data  /dev/sdb
-lvcreate -n tsp0 -l100%FREE data
-mkfs.ext4 /dev/data/tsp0
+mkfs.xfs /dev/data/tsp0
 mount /srv/.bricks
 service glusterd start
 ```

@@ -1,26 +1,86 @@
 #!/bin/bash
 
-if [ "$1" = "" ] ; then
-  echo " usage: `basename $0` <domain> kvm1|kvm2"
+. /opt/kc/etc/config
+
+HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
+
+#############################
+_usage()
+{
+  if [ "$1" = "" ] ; then
+    echo "  usage: `basename $0` <command>"
+    echo ""
+    echo "               ls"
+    echo "               cmd autostart"
+    echo "               mig <source_host> <target_host>"
+    echo ""
+    exit 0
+  fi
+}
+#############################
+cmd_for_vms_on_host()
+{
+  host=$1
+  cmd="$2"
+  vms=$( ssh -q ${KC_USER}@${host} "virsh list --all --name" )
+  for vm in $vms ; do
+    if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+      continue ;
+    fi
+    state=$( ssh -q ${KC_USER}@${host} "virsh domstate ${vm}" )
+    if [ "$state" != "shut off" ] ; then
+      result_string="${cmd/<DOMAIN>/$vm}"
+      echo "KC: ${KC_USER}@${host} ${result_string}"
+      ssh -q ${KC_USER}@${host} "${result_string}"
+    fi
+  done
+}
+#############################
+cmd_for_vms()
+{ 
+  for host in $HOSTS ; do
+    cmd_for_vms_on_host $host "$1"
+  done
+}
+#############################
+
+_usage $1
+
+if [ "$1" = "cmd" ] ; then
+  cmd_for_vms "virsh $2 <DOMAIN>"
   exit 0
 fi
 
-if [ "$1" = "migrate" ] ; then
-  echo virsh migrate --live $2 --persistent qemu+ssh://$3/system
-  exit $?
+if [ "$1" = "mig" ] ; then
+  source=$2
+  target=$3
+  kc-syncxml undefine
+  cmd_for_vms_on_host ${source} "virsh migrate --live <DOMAIN> --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system"
+  cmd_for_vms_on_host ${target} "virsh autostart <DOMAIN>"
+  chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/* 
+  kc-syncxml export
+  kc-syncxml define
+  exit 0
 fi
 
-if [ "$1" = "restore" ] ; then
-
-  DOM="$2"
-
-  echo virsh shutdown $DOM
-  echo virsh destroy  $DOM
-  echo virsh undefine $DOM
-
-  echo virsh define --file /xxx/ubuntu/2017-12-06.111021/ubuntu.xml
-  echo rm -f /cust/images/ubuntu.qcow2
-  echo cp -v /xxx/ubuntu/2017-12-06.111021/ubuntu.qcow2 /cust/images/
-  echo virsh start    $DOM
+if [ "$1" = "ls" ] ; then
+  for host in $HOSTS ; do
+    vms=$( ssh -q ${KC_USER}@${host} "virsh list --all --name" )
+    for vm in $vms ; do
+      if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+        continue ;
+      fi
+      state=$( ssh -q ${KC_USER}@${host} "virsh domstate ${vm}" )
+      agent="unkown"
+      if [ "$state" != "shut off" ] ; then
+        agent="yes"
+        ssh -q ${KC_USER}@${host} "virsh domtime ${vm}" >/dev/null 2>&1
+        if [ "$?" != "0" ] ; then
+            agent="no"
+        fi
+      fi
+      echo -e "${host}  ${vm}      ($state,$agent)"
+    done
+  done
   exit 0
 fi

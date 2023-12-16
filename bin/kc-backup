@@ -225,7 +225,7 @@ echo "===================================================================="
                 ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
 
                 # check, if commit was successful
-                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/^file +disk +${d}/ {print \$4}"  )
+                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/file +disk +${d}/ {print \$4}"  )
                 if [ "${chk}" != "${img}" ] ; then
                   echo "error: blockcommit for image: <${img}>"
                   _umount

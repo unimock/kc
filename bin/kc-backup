@@ -142,8 +142,10 @@ rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
 #
 # backup ISOs
 #
-mkdir -p $MPOINT/ISOs
-rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+  mkdir -p $MPOINT/ISOs
+  rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+fi
 #
 # backup kc config
 #
@@ -167,8 +169,8 @@ echo "===================================================================="
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print $3}' )
-        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
+        disc=$( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
         #
         # Test if there exists already a file with extension .backup
         #

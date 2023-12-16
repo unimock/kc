@@ -13,6 +13,7 @@ It only works as a wrapper for libvirt for convenient usage.
  * bare metal with VT support
 
 ## Installation
+
 ### minimal ubuntu-22.04 server
 ```
 apt-get purge -y snapd
@@ -39,6 +40,15 @@ netplan generate ; netplan apply
 vi /root/.ssh/authorized_keys
 netplan generate
 netplan apply   # WARNING:root:Cannot call Open vSwitch: ovsdb-server.service is not running.
+```
+### disable cloud-init
+
+```
+touch /etc/cloud/cloud-init
+vi /root/.bash_aliases
+alias ipa='ip -br -c a'
+alias ipl='ip -br -c l'
+alias ipr='ip -br -c r'
 ```
 
 ### kvm/libvirt
@@ -67,7 +77,7 @@ usermod -aG libvirt $ADMIN_USER
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
-vi /etc/hosts # "10.10.10.1 node1 10.10.10.2 node2"
+vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs1"
 vi /etc/netplan/00-installer-config.yaml
 netplan apply
 
@@ -86,14 +96,14 @@ gluster pool list
 #
 #
 #
-gluster peer probe node2
+gluster peer probe gfs2
 gluster pool list
 mkdir /tsp0
-gluster volume create cust replica 2 node1://srv/.bricks/cust node2://srv/.bricks/cust
+gluster volume create cust replica 2 gfs1://srv/.bricks/cust gfs2://srv/.bricks/cust
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
 
-gluster volume start
+gluster volume start cust
 gluster volume status
 gluster volume info cust
 vi /etc/fstab
@@ -111,20 +121,16 @@ vi /etc/netplan/00-installer-config.yaml
 netplan generate ; netplan apply
 
 # 
-
-vi /tmp/host-bridge.xml
+cat <<EOF >/tmp/x
 <network>
-  <name>guest-net</name>
+  <name>lan-net</name>
   <forward mode="bridge"/>
-  <bridge name="guest-net"/>
+  <bridge name="lan-net"/>
 </network>
-
-# create libvirt network using existing host bridge
-virsh net-define x
-virsh net-start guest-net
-virsh net-autostart guest-net
-
-# state should be active, autostart, and persistent
+EOF
+virsh net-define /tmp/x
+virsh net-start lan-net
+virsh net-autostart lan-net
 virsh net-list --all
 ```
 
@@ -137,12 +143,18 @@ cd /tmp
 wget https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_1.9.51-1_all.deb
 dpkg --force-depends -i /tmp/virtnbdbackup_1.9.51-1_all.deb
 apt --fix-broken install
-echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
-echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/local/abstractions/libvirt-qemu
-echo -e '/var/tmp/virtnbdbackup.* rw,\n/var/tmp/backup.* rw,'   > /etc/apparmor.d/local/usr.sbin.libvirtd
-
+# append lines:
+/var/tmp/virtnbdbackup.* rw,
+/var/tmp/backup.* rw,
+in:
+/etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
+/etc/apparmor.d/local/abstractions/libvirt-qemu
+/etc/apparmor.d/local/usr.sbin.libvirtd
+systemctl restart apparmor
+systemctl status  apparmor
 #
-mkdir /backup
+rm -rvf /backup
+mkdir -p /backup
 DOMAIN=test
 virtnbdbackup  -d $DOMAIN -l auto -o /backup
 ```
@@ -158,13 +170,57 @@ vi /etc/netdata/netdata.conf # bind socket ip
 
 ```
 
+### create ssh keys for kvm's communication 
+
+ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
+cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
+
 ### utils and kc environment
 
 ```
-apt-get install -y git tree screen swaks
+apt-get install -y git tree screen swaks lsof
 git clone https://github.com/unimock/kc.git /opt/kc
 /opt/kc/bin/kc-install init     # initialize kc environment
 . /etc/profile                  # or re-login
+
+mkdir -p /tsp0/config/
+echo -e "kvm8\nkvm9" >  /tsp0/config/hosts.conf
+vi /tsp0/config/backup-uuids.conf
+vi /tsp0/config/backup-passwd.conf
+vi /tsp0/config/gluster.conf
+vi /tsp0/config/kc-backup.conf
+mkdir -p /tsp0/ISOs
+```
+
+# gluster administration examples
+
+```
+rm /tsp0/tescht*
+
+gluster peer status
+gluster volume status
+gluster volume remove-brick cust replica 1 gfs2:/srv/.bricks/cust force
+gluster volume status
+touch /tsp0/tescht1
+#ssh gfs2 rm -Rvf /srv/.bricks/cust
+ssh gfs2 lsof /tsp0
+#ssh gfs2 systemctl stop libvirtd
+ssh gfs2 umount /tsp0
+ssh gfs2 umount /srv/.bricks
+ssh gfs2 mkfs.xfs -f /dev/sdb1
+ssh gfs2 mount /srv/.bricks
+ssh gfs2 mount /tsp0
+
+gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
+gluster volume status
+ssh gfs2 ls -la /tsp0/tescht1
+
+ssh gfs2 systemctl stop glusterd
+touch /tsp0/tescht2
+ssh gfs2 systemctl start glusterd
+ssh gfs2 ls -la /tsp0/tescht2
+rm /tsp0/tescht*
+
 ```
 
 # TODO
@@ -199,7 +255,6 @@ git clone https://github.com/unimock/kc.git /opt/kc
 
  # resolve qemu port conflict:
  vi /etc/glusterfs/glusterd.vol
- option base-port 50152
  echo "10.10.10.1      gfs1" >> /etc/hosts
  echo "10.10.10.2      gfs2" >> /etc/hosts
 
@@ -261,8 +316,8 @@ git clone https://github.com/unimock/kc.git /opt/kc
 ## kc utilities
 
 ```
- kc-tool ls               # list VMs
- kc-tool mig kvm1 kvm2    # migrate VMs from kvm1 to kvm2 
+ kc-tool ls                # list VMs
+ kc-tool mig kvm1 kvm2     # migrate VMs from kvm1 to kvm2 
  
  kc-status gluster         # display gluster status
  kc-status bond            # display bond status
@@ -353,11 +408,20 @@ gluster peer detach gfs2
 ### re-create brick lvm-partition on **kvm2**
 ```
 # @kvm2 (gfs2):
-service glusterd stop
+umount /tsp0
+systemctl stop glusterd
 umount /srv/.bricks
-mkfs.xfs /dev/data/tsp0
+lsblk
+mkfs.xfs -f mkfs.xfs /dev/sdb1
 mount /srv/.bricks
-service glusterd start
+systemctl start glusterd
+mount /tsp0
+
+gluster volume status cust
+gluster volume info   cust
+gluster volume heal   cust info
+
+
 ```
 
 ### add brick to an existing replicated volume (cust)
@@ -384,14 +448,14 @@ gluster volume heal   cust info
 ### repair brocken backup
 
 ```
- ssh kvm1
- cd /tsp0/images
- ls *.backup
+ssh kvm1
+cd /tsp0/images
+ls *.backup
 
- DOM="vw"
- virsh domblklist  ${DOM} --details
- virsh blockcommit ${DOM} vdb  --active --wait --pivot --verbose
- virsh domblklist  ${DOM} --details
- rm /tsp0/images/xxxx.backup
+DOM="vw"
+virsh domblklist  ${DOM} --details
+virsh blockcommit ${DOM} vdb  --active --wait --pivot --verbose
+virsh domblklist  ${DOM} --details
+rm /tsp0/images/xxxx.backup
 
 ```

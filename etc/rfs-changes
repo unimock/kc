@@ -1,9 +1,10 @@
 
-/etc/network/interfaces
+/etc/netplan
 /etc/hosts
 /etc/hostname
-/root/.ssh
 /etc/glusterfs/glusterd.vol
 /etc/fstab
-/etc/cron.d/kc
+/etc/netdata/netdata.conf
+/root/.ssh
+/root/.bash_aliases
 

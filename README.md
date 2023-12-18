@@ -14,17 +14,15 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Installation
 
-### minimal ubuntu-22.04 server
+### ubuntu-22.04 server
 ```
 apt-get purge -y snapd
+systemctl daemon-reload
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
-apt-get install -y vim
 
-apt-get install -y locales iputils-ping net-tools rsync vim
-dpkg-reconfigure locales
-locale-gen en_US.UTF-8
+apt-get install -y net-tools
 ```
 ### fix ip, hostname,...
 
@@ -39,12 +37,12 @@ vi /etc/netplan/00-installer-config.yaml
 netplan generate ; netplan apply
 vi /root/.ssh/authorized_keys
 netplan generate
-netplan apply   # WARNING:root:Cannot call Open vSwitch: ovsdb-server.service is not running.
+netplan apply
 ```
 ### disable cloud-init
 
 ```
-touch /etc/cloud/cloud-init
+#touch /etc/cloud/cloud-init
 vi /root/.bash_aliases
 alias ipa='ip -br -c a'
 alias ipl='ip -br -c l'
@@ -57,18 +55,17 @@ https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
 
 ```
 egrep -c '(vmx|svm)' /proc/cpuinfo
-apt install -y cpu-checker
+apt-get install -y cpu-checker
 kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils
-#
-apt-get install -y libguestfs-tools  # virt-customize
-apt-get install -y cloud-image-utils # cloud-localds
+apt-get install -y libguestfs-tools    # virt-customize
+apt-get install -y cloud-image-utils   # cloud-localds
 systemctl enable --now libvirtd
 systemctl start        libvirtd
 systemctl status       libvirtd
-ADMIN_USER=madmin 
-usermod -aG kvm     $ADMIN_USER
-usermod -aG libvirt $ADMIN_USER
+#ADMIN_USER=madmin 
+#usermod -aG kvm     $ADMIN_USER
+#usermod -aG libvirt $ADMIN_USER
 
 ```
 
@@ -77,19 +74,20 @@ usermod -aG libvirt $ADMIN_USER
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
-vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs1"
+vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs2 10.10.10.3 gfs3"
 vi /etc/netplan/00-installer-config.yaml
 netplan apply
 
-apt-get install glusterfs-server -y
+apt-get install -y glusterfs-server
 systemctl start glusterd
 systemctl enable glusterd
 systemctl status glusterd
 lsblk
-fdisk /dev/sdb
-mkfs.xfs /dev/sdb1
+DEV=/dev/sda
+fdisk $DEV
+mkfs.xfs ${DEV}1
 mkdir /srv/.bricks
-vi /etc/fstab # "/dev/sdb1 /srv/.bricks xfs defaults 0 0"
+echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
 mount -a
 df -h
 gluster pool list
@@ -139,17 +137,16 @@ virsh net-list --all
 https://github.com/abbbi/virtnbdbackup
 
 ```
-cd /tmp
-wget https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_1.9.51-1_all.deb
-dpkg --force-depends -i /tmp/virtnbdbackup_1.9.51-1_all.deb
-apt --fix-broken install
+wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_1.9.51-1_all.deb
+dpkg --force-depends -i /tmp/vnb.deb
+apt --fix-broken install -y
 # append lines:
 /var/tmp/virtnbdbackup.* rw,
 /var/tmp/backup.* rw,
 in:
-/etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
-/etc/apparmor.d/local/abstractions/libvirt-qemu
-/etc/apparmor.d/local/usr.sbin.libvirtd
+vi /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
+vi /etc/apparmor.d/local/abstractions/libvirt-qemu
+vi /etc/apparmor.d/local/usr.sbin.libvirtd
 systemctl restart apparmor
 systemctl status  apparmor
 #
@@ -164,21 +161,31 @@ virtnbdbackup  -d $DOMAIN -l auto -o /backup
 https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04
 
 ```
-apt install netdata -y
+apt-get install -y netdata
 vi /etc/netdata/netdata.conf # bind socket ip
 # firefox <ip>:19999
+systemctl enable netdata
+systemctl start  netdata
 
 ```
 
-### create ssh keys for kvm's communication 
+### create ssh keys for kvm's communication
 
+```
 ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
 cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
+echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
+echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
+# scp /root/.ssh/* root@kvm2:/root/.ssh
+sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
+systemctl restart sshd
+
+```
 
 ### utils and kc environment
 
 ```
-apt-get install -y git tree screen swaks lsof
+apt-get install -y tree swaks
 git clone https://github.com/unimock/kc.git /opt/kc
 /opt/kc/bin/kc-install init     # initialize kc environment
 . /etc/profile                  # or re-login
@@ -227,18 +234,6 @@ rm /tsp0/tescht*
 
 
 
-### create and deploy ssh keys
-```
- mkdir /root/.ssh
- #ssh-keygen -b4096
- #cat id_rsa.pub >> authorized_keys
- echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
- echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
- scp /root/.ssh/* root@kvm2:/root/.ssh
- sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
- /etc/init.d/ssh reload
-
-```
 ### bonds and bridges 
 ```
  # https://www.cyberciti.biz/faq/ubuntu-linux-bridging-and-bonding-setup/
@@ -320,7 +315,7 @@ rm /tsp0/tescht*
  kc-tool mig kvm1 kvm2     # migrate VMs from kvm1 to kvm2 
  
  kc-status gluster         # display gluster status
- kc-status bond            # display bond status
+ #kc-status bond            # display bond status
 
  kc-syncxml complete       # sync VMs definition files between hosts
 
@@ -360,7 +355,7 @@ rm /tsp0/tescht*
 ```
   blkid          # get the device name for DEV
   DEV=/dev/sdc
-  INFO_HD_NAME="atk-bup-3"
+  INFO_HD_NAME="atk-bup-XXX"
   NAME="kvm-bup"
 
   dd if=/dev/urandom bs=1M count=8 of=$DEV
@@ -379,15 +374,9 @@ rm /tsp0/tescht*
   cryptsetup luksClose $NAME
   rmdir /backup
   # test
-  cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
-  mkdir -p /backup
-  mount /dev/mapper/$NAME /backup
-  df -h /backup
-  cat  /backup/INFO.cfg
-  umount /backup
-  rmdir /backup
-  cryptsetup luksClose $NAME
-
+  kc-backup mount
+  df -h
+  kc-backup umount
 ```
 
 ## gluster administration
@@ -420,8 +409,6 @@ mount /tsp0
 gluster volume status cust
 gluster volume info   cust
 gluster volume heal   cust info
-
-
 ```
 
 ### add brick to an existing replicated volume (cust)
@@ -443,19 +430,4 @@ gluster volume heal   cust info
 
 ## Hints
 * Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen
-* nach Aktivieren eines Snapshot muss vor einem Migrate erst ein Restart der vm durchgeführt werden.
 
-### repair brocken backup
-
-```
-ssh kvm1
-cd /tsp0/images
-ls *.backup
-
-DOM="vw"
-virsh domblklist  ${DOM} --details
-virsh blockcommit ${DOM} vdb  --active --wait --pivot --verbose
-virsh domblklist  ${DOM} --details
-rm /tsp0/images/xxxx.backup
-
-```

@@ -26,7 +26,11 @@ _mount()
     echo "error: missing uuid definition file <$FI>"
     sf_set_error
     sf_end
-  fi 
+  fi
+  if [ ! -d $MPOINT ] ; then
+    echo "create mountpoint: $MPOINT"
+    mkdir -p $MPOINT
+  fi
   _mount=0
   for UUID in $( cat $FI ) ; do
     DEV=`blkid  -U $UUID`
@@ -138,8 +142,10 @@ rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
 #
 # backup ISOs
 #
-mkdir -p $MPOINT/ISOs
-rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+  mkdir -p $MPOINT/ISOs
+  rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+fi
 #
 # backup kc config
 #
@@ -163,8 +169,8 @@ echo "===================================================================="
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print $3}' )
-        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
+        disc=$( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
         #
         # Test if there exists already a file with extension .backup
         #
@@ -219,7 +225,7 @@ echo "===================================================================="
                 ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
 
                 # check, if commit was successful
-                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/^file +disk +${d}/ {print \$4}"  )
+                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/file +disk +${d}/ {print \$4}"  )
                 if [ "${chk}" != "${img}" ] ; then
                   echo "error: blockcommit for image: <${img}>"
                   _umount

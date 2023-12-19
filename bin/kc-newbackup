@@ -4,17 +4,31 @@ sf_start
 
 . /opt/kc/etc/config
 
-GLUSTER_VOLUME="cust"
 MPOINT=/backup
 NAME="kvm-bup"
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
-EXCLUDE="*_temp_disk.qcow2"
+KC_BACKUP_EXCLUDE=""
 
+KC_BACKUP_SSH_OPT=""
+
+DEV=""
+
+#eval `ssh-agent`
+# ssh-add 
+#sudo -E -s /opt/kc/bin/kc-newbackup simul
+#
 #############################
 _usage()
 {
   if [ "$1" = "" ] ; then
-    echo "  usage: `basename $0` mount|umount|status|simul|backup [vm]"
+    echo ""
+    echo "usage:"
+    echo ""
+    echo "`basename $0` mount|umount|reset|status"
+    echo "`basename $0` simul|backup [<domain>]"
+    echo "`basename $0` restore <domain>"
+    echo "`basename $0` delete <domain> # delete domain backup from backup device"
+    echo ""
     exit 0
   fi
 }
@@ -36,6 +50,8 @@ _mount()
     DEV=`blkid  -U $UUID`
     ret=$?
     if [ "$ret" = "0" ] ; then
+      mkdir -p /var/kc
+      echo "$DEV" > /var/kc/device
       cryptsetup luksOpen $DEV $NAME < ${KC_TSP_DIR}/config/backup-passwd.conf
       mount /dev/mapper/$NAME $MPOINT
       . $MPOINT/INFO.cfg 
@@ -56,6 +72,9 @@ _umount()
   umount $MPOINT
   cryptsetup luksClose $NAME
   echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
+  if [ -f /var/kc/device  ] ; then
+    smartctl -s standby,now $(cat /var/kc/device) >/dev/null # spin-off disk
+  fi
 }
 #############################
 _status()
@@ -67,6 +86,10 @@ _status()
     sf_end
   fi
   . $FI
+  if [ "$KC_GLUSTER_ACTIVE"  = "false" ] ; then
+    echo "gluster not activated in $FI, so skipping gluster check!"
+    return 0
+  fi 
   #
   # check gluster status
   #
@@ -114,9 +137,14 @@ if [ "$CMD" = "status" ] ; then
   _status
   exit 0
 fi
+
 _usage $CMD
-if [ "$CMD" != "backup" -a "$CMD" != "simul" ] ; then
+if [ "$CMD" != "backup" -a "$CMD" != "simul"  -a "$CMD" != "restore"  -a "$CMD" != "delete" ] ; then
   echo "unkomwn command given"
+  exit 1
+fi
+if [ "$CMD" = "restore" -a "$VMB" = "" ] ; then
+  echo "error: domain not given!"
   exit 1
 fi
 
@@ -124,44 +152,83 @@ date
 _status
 _mount
 
-#
-# cleanup orphaned backup files from backup device
-#
-list=$(find /backup/ -type f -name ".*qcow2.*")
-for i in $list ; do
-  rm $i
-done
-#
-# backup rfs-changes
-#
-for h in $HOSTS ; do
-  mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-  ssh -q ${KC_USER}@${h} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${h}"
-done
-rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
-#
-# backup ISOs
-#
-if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
-  mkdir -p $MPOINT/ISOs
-  rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
+  echo "error: missing definition file <${KC_TSP_DIR}/config/kc-backup.conf>."
+  exit 1
 fi
+. ${KC_TSP_DIR}/config/kc-backup.conf
+if [ "$KC_BACKUP_AREA" = "" ] ; then
+  echo "error: backup area <KC_BACKUP_AREA> not set in <${KC_TSP_DIR}/config/kc-backup.conf>."
+  exit 1
+fi
+
+
+if [ "$CMD" = "delete" ] ; then
+  if [ "$VMB" = ""  ] ; then
+    echo "error: nod domain given"
+    _umount
+    exit 1
+  fi 
+  rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/$VMB
+  _umount
+  exit 0
+fi
+
+
 #
-# backup kc config
+# restore domain
 #
-mkdir -p $MPOINT/config
-rsync -av ${KC_TSP_DIR}/config/  $MPOINT/config
-#
-# backup vms
-#
-echo "===================================================================="
+if [ "$CMD" = "restore" ] ; then
+  virsh destroy  $VMB
+  virsh undefine $VMB --remove-all-storage --checkpoints-metadata --snapshots-metadata
+  virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
+  ret=$?
+  if [ "$ret" != "0" ] ; then
+    echo "error: virtnbdrestore returns <$ret>"
+    _umount
+    exit 1
+  fi
+  virsh start    $VMB
+  rm -rvf  ${KC_TSP_DIR}/sync/backup/$VMB
+  mkdir -p ${KC_TSP_DIR}/sync/backup/$VMB
+  rm -f    ${KC_TSP_DIR}/sync/backup/$VMB.conf  # remove this backup for next full backup
+  _umount
+  exit 0
+fi
+
+if [ "$CMD" = "backup" ] ; then
+  #
+  # backup rfs-changes
+  #
+  for host in $HOSTS ; do
+    mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
+    ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+  done
+  rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
+  #
+  # backup ISOs
+  #
+  if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+    mkdir -p $MPOINT/$KC_BACKUP_AREA/ISOs
+    rsync -av --delete ${KC_TSP_DIR}/ISOs/   $MPOINT/$KC_BACKUP_AREA/ISOs
+  fi
+  #
+  # backup kc config
+  #
+  mkdir -p $MPOINT/$KC_BACKUP_AREA/config
+  rsync -av ${KC_TSP_DIR}/config/ $MPOINT/$KC_BACKUP_AREA/config
+  #
+  # backup vms
+  #
+  mkdir -p ${KC_TSP_DIR}/sync/backup
+  echo "===================================================================="
   for h in $HOSTS ; do
-    vms=$( ssh -q ${KC_USER}@${h} "virsh list --all --name" )
+    vms=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
     for vm in $vms ; do
         if [[ $vm == \[*@kvm[1-9]\] ]] ; then
           continue ;
         fi
-        state=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+        state=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )
         _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
         echo "####################################################"
         echo "#  $vm @ ${h} ($state) ${_DATE}"
@@ -169,99 +236,81 @@ echo "===================================================================="
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
-        eval $( ssh -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
-        #
-        # Test if there exists already a file with extension .backup
-        #
-        for d in ${disc[@]}; do
-            img=${imgs[${d}]}
-            img=${img%.qcow2} ; img=${img%.img}
-            #echo check if $img exists
-            if [ -f ${img}.backup ] ; then
-               echo "error: ${img}.backup from VM ${vm} already exists"
-               _umount
-               sf_set_error
-               sf_end
-            fi
-        done
+        disc=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
         if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
-          if [ "$CMD" = "simul" ] ; then
-            echo mkdir -p $MPOINT/domains/${vm}
-            echo "ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
-          else
-            mkdir -p $MPOINT/domains/${vm}
-            ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml
+            #
+            # remove former backups from device, if new device detected
+            #
+          if [ ! -f ${KC_TSP_DIR}/sync/backup/$vm.conf ] ; then
+            rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/$vm
           fi
-          if [ "$state" != "shut off" ] ; then
-            QPAR="--quiesce"
-            ssh -q ${KC_USER}@${h} "virsh domtime ${vm}" >/dev/null 2>&1
-            if [ "$?" != "0" ] ; then
-                QPAR=""
-                echo "warning: snapshot-create without quiesce!!!"
-            fi
-            if [ "$CMD" = "simul" ] ; then
-              echo ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
-            else
-              ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
-            fi
+          last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf )
+          if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
+            rm -rvf  $MPOINT/$KC_BACKUP_AREA/domains/$vm 
+            mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/$vm
           fi
+          #
+          # exclude images
+          #
+          exclude_disks=""
           for d in ${disc[@]}; do
             img=${imgs[${d}]}
-            if [[ "$(basename $img)" == $EXCLUDE ]]; then
-              echo "skipping backup of image: <$img>, because of EXCLUDE setting <$EXCLUDE>"
-            else
-              if [ "$CMD" = "simul" ] ; then
-                echo rsync -av ${img} $MPOINT/domains/${vm}/
-              else
-                echo "copy ${img} to $MPOINT/domains/${vm}/ ..."
-                rsync -av ${img} $MPOINT/domains/${vm}/   # --progress
-              fi
-            fi
-            if [ "$state" != "shut off" ] ; then
-              if [ "$CMD" = "simul" ] ; then
-                echo ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
-              else
-                ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
-
-                # check, if commit was successful
-                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/file +disk +${d}/ {print \$4}"  )
-                if [ "${chk}" != "${img}" ] ; then
-                  echo "error: blockcommit for image: <${img}>"
-                  _umount
-                  sf_set_error
-                  sf_end
-                fi 
-                img=${img%.qcow2} ; img=${img%.img} 
-                echo "remove snapshot image: <${img}.backup>"
-                rm -f ${img}.backup
-              fi
+            if [[ "$(basename $img)" == $KC_BACKUP_EXCLUDE ]]; then
+              exclude_disks="${exclude_disks},$d"
+              echo "skipping backup of image: <$img>, because it of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
             fi
           done
-          ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details"
+          if [ "${exclude_disks}" != "" ] ; then
+            exclude_disks=${exclude_disks%,}
+            exclude_disks="-x $exclude_disks"
+          fi  
+          echo "jetzt backup für Domain <$vm> durchführen..."
+          if [ "$CMD" != "simul" ] ; then
+            mkdir -p ${KC_TSP_DIR}/sync/backup/$vm
+            virtnbdbackup  -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
+            ret=$?
+            if [ "$ret" != "0" ] ; then
+              echo "error: virtnbdbackup returns <$ret>"
+              _umount
+              exit 1
+            fi
+            # store backup device name
+            echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
+          fi
+          echo "backup für Domain <$vm> ist durchgeführt"
+          if [ "$CMD" != "simul" ] ; then
+            #echo "ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
+            true
+          fi
+
         fi
     done
   done
-echo "===================================================================="
-find   $MPOINT -ls
-df -h  $MPOINT
-usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
-_umount
-date
-
-if [ -d /root/logs ] ; then
-  DAT=$(date +"%Y-%m-%d %H:%M:%S")
-  sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" /root/logs/kc-backup.rep
-fi
-
-if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
-  . ${KC_TSP_DIR}/config/kc-backup.conf
-  sendemail -f ${KC_BACKUP_FROM}                       \
-            -t ${KC_BACKUP_TO}                         \
-            -s ${KC_BACKUP_SMTP}                       \
-            -u "kc-backup @ `hostname`" \
-            -o message-file=/root/logs/kc-backup.rep   \
-            -a              /root/logs/kc-backup.rep
+  echo "===================================================================="
+  #find   $MPOINT -ls
+  df -h  $MPOINT
+  usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
+  echo "##############################"
+  tree $MPOINT/$KC_BACKUP_AREA
+  echo "##############################"
+  tree ${KC_TSP_DIR}/sync/backup
+  echo "##############################"
+  _umount
+  date
+  if [ -d /root/logs ] ; then
+    DAT=$(date +"%Y-%m-%d %H:%M:%S")
+    sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" /root/logs/kc-backup.rep
+  fi
+#if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
+#  . ${KC_TSP_DIR}/config/kc-backup.conf
+#  sendemail -f ${KC_BACKUP_FROM}                       \
+#            -t ${KC_BACKUP_TO}                         \
+#            -s ${KC_BACKUP_SMTP}                       \
+#            -u "kc-backup @ `hostname`" \
+#            -o message-file=/root/logs/kc-backup.rep   \
+#            -a              /root/logs/kc-backup.rep
+#fi
 fi
 sf_end
 

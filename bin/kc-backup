@@ -10,6 +10,12 @@ NAME="kvm-bup"
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 EXCLUDE="*_temp_disk.qcow2"
 
+SSH_OPT=""
+#SSH_OPT="-i /home/user/dc/hosts/id_ed25519 -p 11111"
+#eval `ssh-agent`
+# ssh-add 
+#sudo -E -s /opt/kc/kc-backup backup
+#
 #############################
 _usage()
 {
@@ -26,7 +32,11 @@ _mount()
     echo "error: missing uuid definition file <$FI>"
     sf_set_error
     sf_end
-  fi 
+  fi
+  if [ ! -d $MPOINT ] ; then
+    echo "create mountpoint: $MPOINT"
+    mkdir -p $MPOINT
+  fi
   _mount=0
   for UUID in $( cat $FI ) ; do
     DEV=`blkid  -U $UUID`
@@ -63,6 +73,10 @@ _status()
     sf_end
   fi
   . $FI
+  if [ "$KC_GLUSTER_ACTIVE"  = "false" ] ; then
+    echo "gluster not activated in $FI, so skipping gluster check!"
+    return 0
+  fi 
   #
   # check gluster status
   #
@@ -119,7 +133,6 @@ fi
 date
 _status
 _mount
-
 #
 # cleanup orphaned backup files from backup device
 #
@@ -130,16 +143,18 @@ done
 #
 # backup rfs-changes
 #
-for h in $HOSTS ; do
+for host in $HOSTS ; do
   mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-  ssh -q ${KC_USER}@${h} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${h}"
+  ssh ${SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
 done
 rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
 #
 # backup ISOs
 #
-mkdir -p $MPOINT/ISOs
-rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+  mkdir -p $MPOINT/ISOs
+  rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+fi
 #
 # backup kc config
 #
@@ -150,12 +165,12 @@ rsync -av ${KC_TSP_DIR}/config/  $MPOINT/config
 #
 echo "===================================================================="
   for h in $HOSTS ; do
-    vms=$( ssh -q ${KC_USER}@${h} "virsh list --all --name" )
+    vms=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
     for vm in $vms ; do
         if [[ $vm == \[*@kvm[1-9]\] ]] ; then
           continue ;
         fi
-        state=$( ssh -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+        state=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )
         _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
         echo "####################################################"
         echo "#  $vm @ ${h} ($state) ${_DATE}"
@@ -163,8 +178,8 @@ echo "===================================================================="
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print $3}' )
-        eval $( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk '/^file +disk/ {print "imgs["$3"]="$4}' )
+        disc=$( ssh ${SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( ssh ${SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
         #
         # Test if there exists already a file with extension .backup
         #
@@ -182,22 +197,22 @@ echo "===================================================================="
         if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
           if [ "$CMD" = "simul" ] ; then
             echo mkdir -p $MPOINT/domains/${vm}
-            echo "ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
+            echo "ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
           else
             mkdir -p $MPOINT/domains/${vm}
-            ssh -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml
+            ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml
           fi
           if [ "$state" != "shut off" ] ; then
             QPAR="--quiesce"
-            ssh -q ${KC_USER}@${h} "virsh domtime ${vm}" >/dev/null 2>&1
+            ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh domtime ${vm}" >/dev/null 2>&1
             if [ "$?" != "0" ] ; then
                 QPAR=""
                 echo "warning: snapshot-create without quiesce!!!"
             fi
             if [ "$CMD" = "simul" ] ; then
-              echo ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+              echo ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
             else
-              ssh -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+              ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
             fi
           fi
           for d in ${disc[@]}; do
@@ -214,12 +229,12 @@ echo "===================================================================="
             fi
             if [ "$state" != "shut off" ] ; then
               if [ "$CMD" = "simul" ] ; then
-                echo ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+                echo ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
               else
-                ssh -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+                ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
 
                 # check, if commit was successful
-                chk=$( ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/^file +disk +${d}/ {print \$4}"  )
+                chk=$( ssh ${SSH_OPT} -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/file +disk +${d}/ {print \$4}"  )
                 if [ "${chk}" != "${img}" ] ; then
                   echo "error: blockcommit for image: <${img}>"
                   _umount
@@ -232,12 +247,12 @@ echo "===================================================================="
               fi
             fi
           done
-          ssh -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details"
+          ssh ${SSH_OPT} -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details"
         fi
     done
   done
 echo "===================================================================="
-find   $MPOINT -ls
+#find   $MPOINT -ls
 df -h  $MPOINT
 usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
 _umount

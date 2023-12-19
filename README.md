@@ -24,21 +24,22 @@ apt-get autoremove -y
 
 apt-get install -y net-tools
 ```
-### fix ip, hostname,...
+### fix ip, hostname, bridges
 
 https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
 
 ```
 vi /etc/hosts
 vi /etc/hostname
-chmod 600  /etc/netplan/00-installer-config.yaml 
-# apply ssh-keys
+chmod 600  /etc/netplan/00-installer-config.yaml
 vi /etc/netplan/00-installer-config.yaml
-netplan generate ; netplan apply
-vi /root/.ssh/authorized_keys
 netplan generate
 netplan apply
+brctl show
+# apply your ssh-keys
+vi /root/.ssh/authorized_keys
 ```
+
 ### disable cloud-init
 
 ```
@@ -92,15 +93,14 @@ mount -a
 df -h
 gluster pool list
 #
-#
-#
 gluster peer probe gfs2
 gluster pool list
 mkdir /tsp0
 gluster volume create cust replica 2 gfs1://srv/.bricks/cust gfs2://srv/.bricks/cust
+#
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
-
+#
 gluster volume start cust
 gluster volume status
 gluster volume info cust
@@ -115,10 +115,14 @@ mount -a
 https://fabianlee.org/2019/04/01/kvm-creating-a-bridged-network-with-netplan-on-ubuntu-bionic/
 
 ```
+# netzwerk interfaces, die nicht verwendet werden auskommentieren!!! (wait for interface @ boot)
 vi /etc/netplan/00-installer-config.yaml
-netplan generate ; netplan apply
-
-# 
+netplan generate
+netplan apply
+brctl show
+#
+# create lan-net
+#
 cat <<EOF >/tmp/x
 <network>
   <name>lan-net</name>
@@ -129,6 +133,19 @@ EOF
 virsh net-define /tmp/x
 virsh net-start lan-net
 virsh net-autostart lan-net
+#
+# create mgmt-net
+#
+cat <<EOF >/tmp/x
+<network>
+  <name>mgmt-net</name>
+  <forward mode="bridge"/>
+  <bridge name="mgmt-net"/>
+</network>
+EOF
+virsh net-define /tmp/x
+virsh net-start mgmt-net
+virsh net-autostart mgmt-net
 virsh net-list --all
 ```
 
@@ -150,10 +167,11 @@ vi /etc/apparmor.d/local/usr.sbin.libvirtd
 systemctl restart apparmor
 systemctl status  apparmor
 #
-rm -rvf /backup
-mkdir -p /backup
+rm -rvf /test-backup
+mkdir -p /test-backup
 DOMAIN=test
-virtnbdbackup  -d $DOMAIN -l auto -o /backup
+virtnbdbackup  -d $DOMAIN -l auto -o /test-backup
+rm -rvf /test-backup
 ```
 
 ### install netdata

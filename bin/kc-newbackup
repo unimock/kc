@@ -73,7 +73,7 @@ _umount()
   cryptsetup luksClose $NAME
   echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
   if [ -f /var/kc/device  ] ; then
-    smartctl -s standby,now $(cat /var/kc/device) >/dev/null # spin-off disk
+    hdparm -y  $(cat /var/kc/device)  # spin-off disk
   fi
 }
 #############################

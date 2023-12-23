@@ -1,4 +1,7 @@
 # kc  ... kvm controller 
+ 
+Problem, wenn ein Netzwerkinterface (vermutlich gluster-Network) in netplan definiert, jedoch nicht gesteckt ist (down):
+https://stanislas.blog/2018/10/how-to-mount-local-glusterfs-volume-boot-fstab-systemd-fix/
 
 ## Description
 
@@ -24,6 +27,7 @@ apt-get autoremove -y
 
 apt-get install -y net-tools
 ```
+
 ### fix ip, hostname, bridges
 
 https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
@@ -49,6 +53,46 @@ alias ipa='ip -br -c a'
 alias ipl='ip -br -c l'
 alias ipr='ip -br -c r'
 ```
+### glusterfs
+
+https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
+
+```
+vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs2 10.10.10.3 gfs3"
+vi /etc/netplan/00-installer-config.yaml
+netplan apply
+
+apt-get install -y glusterfs-server
+systemctl start glusterd
+systemctl enable glusterd
+systemctl status glusterd
+lsblk
+DEV=/dev/sdX
+fdisk $DEV
+mkfs.xfs ${DEV}1
+mkdir /srv/.bricks
+echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
+mount -a
+df -h
+gluster pool list
+#
+gluster peer probe gfs2
+gluster pool list
+mkdir /tsp0
+gluster volume create cust replica 2 gfs3://srv/.bricks/cust gfs2://srv/.bricks/cust
+#
+# Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
+# See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
+#
+gluster volume heal  cust info
+gluster volume start cust
+gluster volume status
+gluster volume info cust
+vi /etc/fstab
+# localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
+# #localhost:cust /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0
+mount -a
+```
 
 ### kvm/libvirt
 
@@ -70,45 +114,6 @@ systemctl status       libvirtd
 
 ```
 
-### glusterfs
-
-https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
-
-```
-vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs2 10.10.10.3 gfs3"
-vi /etc/netplan/00-installer-config.yaml
-netplan apply
-
-apt-get install -y glusterfs-server
-systemctl start glusterd
-systemctl enable glusterd
-systemctl status glusterd
-lsblk
-DEV=/dev/sda
-fdisk $DEV
-mkfs.xfs ${DEV}1
-mkdir /srv/.bricks
-echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
-mount -a
-df -h
-gluster pool list
-#
-gluster peer probe gfs2
-gluster pool list
-mkdir /tsp0
-gluster volume create cust replica 2 gfs1://srv/.bricks/cust gfs2://srv/.bricks/cust
-#
-# Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
-# See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
-#
-gluster volume start cust
-gluster volume status
-gluster volume info cust
-vi /etc/fstab
-# localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
-# #localhost:cust /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0
-mount -a
-```
 
 ### bridges and bonds
 
@@ -173,6 +178,19 @@ DOMAIN=test
 virtnbdbackup  -d $DOMAIN -l auto -o /test-backup
 rm -rvf /test-backup
 ```
+
+### virtcpt (manage checkpoints)
+
+https://github.com/abbbi/vircpt.git
+
+```
+apt-get install -y python3-rich
+git clone https://github.com/abbbi/vircpt.git /opt/virtcpt
+cd /opt/virtcpt
+python3 setup.py install
+virtcpt -d <domain> list
+```
+
 
 ### install netdata
 

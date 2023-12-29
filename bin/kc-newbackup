@@ -73,7 +73,7 @@ _umount()
   cryptsetup luksClose $NAME
   echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
   if [ -f /var/kc/device  ] ; then
-    hdparm -y  $(cat /var/kc/device)  # spin-off disk
+    hdparm -y  $(cat /var/kc/device) 2>/dev/null # spin-off disk
   fi
 }
 #############################
@@ -197,26 +197,28 @@ if [ "$CMD" = "restore" ] ; then
 fi
 
 if [ "$CMD" = "backup" ] ; then
-  #
-  # backup rfs-changes
-  #
-  for host in $HOSTS ; do
-    mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-    ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
-  done
-  rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
-  #
-  # backup ISOs
-  #
-  if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
-    mkdir -p $MPOINT/$KC_BACKUP_AREA/ISOs
-    rsync -av --delete ${KC_TSP_DIR}/ISOs/   $MPOINT/$KC_BACKUP_AREA/ISOs
+  if [ "$VMB" = "" ] ; then # only for complete backup
+    #
+    # backup rfs-changes
+    #
+    for host in $HOSTS ; do
+      mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
+      ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+    done
+    rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
+    #
+    # backup ISOs
+    #
+    if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+      mkdir -p $MPOINT/$KC_BACKUP_AREA/ISOs
+      rsync -av --delete ${KC_TSP_DIR}/ISOs/   $MPOINT/$KC_BACKUP_AREA/ISOs
+    fi
+    #
+    # backup kc config
+    #
+    mkdir -p $MPOINT/$KC_BACKUP_AREA/config
+    rsync -av ${KC_TSP_DIR}/config/ $MPOINT/$KC_BACKUP_AREA/config
   fi
-  #
-  # backup kc config
-  #
-  mkdir -p $MPOINT/$KC_BACKUP_AREA/config
-  rsync -av ${KC_TSP_DIR}/config/ $MPOINT/$KC_BACKUP_AREA/config
   #
   # backup vms
   #

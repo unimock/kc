@@ -288,7 +288,6 @@ if [ "$CMD" = "backup" ] ; then
     done
   done
   echo "===================================================================="
-  #find   $MPOINT -ls
   df -h  $MPOINT
   usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
   echo "##############################"

@@ -102,8 +102,7 @@ https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
 egrep -c '(vmx|svm)' /proc/cpuinfo
 apt-get install -y cpu-checker
 kvm-ok
-apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils
-apt-get install -y libvirt-daemon-driver-storage-gluster
+apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils libvirt-daemon-driver-storage-gluster
 systemctl restart libvirtd
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds

@@ -302,6 +302,10 @@ if [ "$CMD" = "backup" ] ; then
   if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
     . ${KC_TSP_DIR}/config/kc-backup.conf
     FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep
+    if [ ! -f ${FI} ] ; then
+      mkdir -p `dirname ${FI}`
+      touch ${FI}
+    fi
     DAT=$(date +"%Y-%m-%d %H:%M:%S")
     sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}] new\n/" ${FI}
     subject="kc-backup @ `hostname`"

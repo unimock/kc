@@ -298,19 +298,21 @@ if [ "$CMD" = "backup" ] ; then
   echo "##############################"
   _umount
   date
-  if [ -d /root/logs ] ; then
+
+  if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
+    . ${KC_TSP_DIR}/config/kc-backup.conf
+    FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep
     DAT=$(date +"%Y-%m-%d %H:%M:%S")
-    sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" /root/logs/kc-backup.rep
+    sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}] new\n/" ${FI}
+    subject="kc-backup @ `hostname`"
+    swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
+          -s   ${KC_BACKUP_SMTP} \
+          --header "Subject: $subject" \
+          --attach-type "text/plain" --attach-body @${FI} \
+          --attach-type "text/plain" --attach @${FI} \
+          -S 2
   fi
-#if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
-#  . ${KC_TSP_DIR}/config/kc-backup.conf
-#  sendemail -f ${KC_BACKUP_FROM}                       \
-#            -t ${KC_BACKUP_TO}                         \
-#            -s ${KC_BACKUP_SMTP}                       \
-#            -u "kc-backup @ `hostname`" \
-#            -o message-file=/root/logs/kc-backup.rep   \
-#            -a              /root/logs/kc-backup.rep
-#fi
+
 fi
 sf_end
 

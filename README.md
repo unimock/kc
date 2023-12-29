@@ -103,6 +103,8 @@ egrep -c '(vmx|svm)' /proc/cpuinfo
 apt-get install -y cpu-checker
 kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils
+apt-get install -y libvirt-daemon-driver-storage-gluster
+systemctl restart libvirtd
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds
 systemctl enable --now libvirtd
@@ -185,10 +187,11 @@ https://github.com/abbbi/vircpt.git
 
 ```
 apt-get install -y python3-rich
-git clone https://github.com/abbbi/vircpt.git /opt/virtcpt
-cd /opt/virtcpt
+git clone https://github.com/abbbi/vircpt.git /opt/vircpt
+cd /opt/vircpt
 python3 setup.py install
-virtcpt -d <domain> list
+DOM=test
+vircpt -d ${DOM} list
 ```
 
 
@@ -425,35 +428,45 @@ rm /tsp0/tescht*
 # @kvm1 (gfs1):
 gluster peer status
 gluster volume info
-gluster volume remove-brick cust replica 1 gfs2:/srv/.bricks/cust force
+GFS=gfs9
+gluster volume remove-brick cust replica 1 ${GFS}:/srv/.bricks/cust force
 gluster volume info cust
-gluster peer detach gfs2
+gluster peer detach ${GFS}
+gluster peer status
 ```
 
-### re-create brick lvm-partition on **kvm2**
+### re-create brick **kvm2**
 ```
 # @kvm2 (gfs2):
+systemctl stop libvirtd
 umount /tsp0
 systemctl stop glusterd
 umount /srv/.bricks
 lsblk
-mkfs.xfs -f mkfs.xfs /dev/sdb1
+mkfs.xfs -f /dev/sdb1
 mount /srv/.bricks
 systemctl start glusterd
+#
+# add-brick on the active host; then:
+#
 mount /tsp0
-
 gluster volume status cust
 gluster volume info   cust
 gluster volume heal   cust info
+systemctl start libvirtd
 ```
 
 ### add brick to an existing replicated volume (cust)
 ```
 # @kvm1 (gfs1):
-gluster peer probe gfs2
+GFS=gfs9
+gluster peer probe ${GFS}
+gluster peer status
 gluster volume status
-gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
-gluster vol status
+gluster volume add-brick cust replica 2 ${GFS}:/srv/.bricks/cust
+gluster volume status
+gluster volume info   cust
+gluster volume heal   cust info
 ```
 
 ### testing

@@ -244,10 +244,7 @@ if [ "$CMD" = "backup" ] ; then
             #
             # remove former backups from device, if new device detected
             #
-          if [ ! -f ${KC_TSP_DIR}/sync/backup/$vm.conf ] ; then
-            rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/$vm
-          fi
-          last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf )
+          last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf 2>/dev/null )
           if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
             rm -rvf  $MPOINT/$KC_BACKUP_AREA/domains/$vm 
             mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/$vm
@@ -299,6 +296,7 @@ if [ "$CMD" = "backup" ] ; then
   echo "##############################"
   _umount
   date
+  if [ "$VMB" = "" ] ; then # only for complete backup
 
   if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
     . ${KC_TSP_DIR}/config/kc-backup.conf
@@ -316,6 +314,7 @@ if [ "$CMD" = "backup" ] ; then
           --attach-type "text/plain" --attach-body @${FI} \
           --attach-type "text/plain" --attach @${FI} \
           -S 2
+  fi
   fi
 
 fi

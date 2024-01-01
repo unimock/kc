@@ -1,0 +1,110 @@
+#!/bin/bash
+
+_help() {
+  IAM=`basename $0`
+  echo ""
+  echo "usage $IAM  <image> create|attach|detach ..."
+  echo ""
+  echo "# examples:"
+  echo "$IAM /tsp0/images/example.qcow2 create xfs 100M"
+  echo "$IAM /tsp0/images/example.qcow2 delete"
+  echo "$IAM /tsp0/images/example.qcow2 sparsify"
+  echo "$IAM /tsp0/images/example.qcow2 attach <domain>"
+  echo "$IAM /tsp0/images/example.qcow2 detach <domain>"
+  echo ""
+  echo "# VM:"
+  echo "lsblk"
+  echo "mkdir -p /xyz"
+  echo "mount /dev/disk/by-id/virtio-example-part1 /xyz"
+  echo "cat /xyz/kc-temp-disk.inf"
+  echo "umount /xyz"
+}
+
+
+if [ "$2" = "" ] ; then
+  _help
+  exit 0
+fi
+
+IMG="$1" ; shift
+CMD="$1" ; shift
+
+if [ "$CMD" = "create" ] ; then
+  if [ -f $IMG ] ; then
+    echo "error: temp-disk already exist! (call: <rm $IMG>)"
+    exit 1
+  fi
+else
+  if [ ! -f $IMG ] ; then
+    echo "error: temp-disk does not exist! (call: create)"
+    exit 1
+  fi
+fi
+
+if [ "$CMD" = "delete" ] ; then
+  rm -f $IMG
+  exit $?
+fi
+
+if [ "$CMD" = "sparsify" ] ; then
+  virt-sparsify --in-place $IMG
+  qemu-img info $IMG
+  exit $?
+fi
+
+if [ "$CMD" = "create" ] ; then
+  FS="$1"
+  SIZE="$2"
+  MNT=$(mktemp -d)
+  modprobe nbd max_part=8
+  qemu-img create -f qcow2 $IMG $SIZE
+  qemu-nbd --connect=/dev/nbd0 $IMG
+  fdisk /dev/nbd0 -l
+  parted  --script /dev/nbd0 mklabel msdos mkpart primary $FS 2048s 100%
+  mkfs.$FS  /dev/nbd0p1
+  fdisk /dev/nbd0 -l
+  mkdir -p $MNT
+  mount /dev/nbd0p1 $MNT
+  date > $MNT/kc-temp-disk.inf
+  umount $MNT
+  rmdir $MNT
+  qemu-nbd --disconnect /dev/nbd0
+  sleep 1
+  rmmod nbd
+  qemu-img info $IMG
+  exit 0
+fi
+
+if [ "$CMD" = "attach" ] ; then
+  DOM="$1"
+  DEV=""
+  dev_list=$(virsh domblklist $DOM | awk '{ print $1 }' | grep ^vd)
+  for x in {a..z} ; do
+    #echo "vd${x}"
+    if [[ "$dev_list" == "vd${x}" ]] ; then
+       #echo "vd${x} exists"
+       continue
+    fi
+    DEV="vd${x}"
+    break
+  done
+  mname=`basename $IMG`
+  mname=${mname%.qcow2}
+  mname=${mname%.img}
+  xxx=$(virsh attach-disk $DOM $IMG  $DEV --cache none --driver qemu --subdriver qcow2 --serial $mname 2>&1)
+  ret=$?
+  if [ "$ret" = "0" ] ; then
+    echo "/dev/disk/by-id/virtio-$mname-part1"
+    exit 0
+  else
+    echo "$xxx"
+    exit 1
+  fi
+fi
+
+if [ "$CMD" = "detach" ] ; then
+  DOM="$1"
+  DEV=$(virsh domblklist --domain $DOM | grep $IMG | awk '{ print $1 }')
+  virsh detach-disk $DOM $DEV
+  virsh domblklist ${DOM} #--details
+fi

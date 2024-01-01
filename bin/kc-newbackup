@@ -180,6 +180,7 @@ fi
 #
 if [ "$CMD" = "restore" ] ; then
   virsh destroy  $VMB
+  # Achtung: Platten, die nicht gesichert werden dürfen nicht gelöscht werden!!!
   virsh undefine $VMB --remove-all-storage --checkpoints-metadata --snapshots-metadata
   virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
   ret=$?

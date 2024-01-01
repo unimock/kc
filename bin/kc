@@ -1,5 +1,29 @@
 #!/bin/bash
 
+_help() {
+  IAM=`basename $0`
+  echo "#"
+  echo "# usage: $IAM up|down|rm <domain>"
+  echo "#"
+  echo "# examples:"
+  echo "#"
+  echo "DOM=test"
+  echo $IAM' up   $DOM       # start VM'
+  echo $IAM' down $DOM       # shutdown VM and wait for shut off'
+  echo $IAM' rm   $DOM       # undefine and remove VM and assigned images'
+
+  echo "#"
+  echo "# other usefull kc commands:"
+  echo "#"
+  echo "kc-tool mig|ls       # migration/list running VMs"
+  echo "kc-backup <command>  # USB-HD backup/restore" 
+  echo "kc-status gluster    # show gluster info and healing"
+  echo "kc-sparsify <domain> # shutdown, sparsify images and start domian"
+  echo "kc-install init      # initialize kc environment"
+  echo "kc-syncxml           # sync libvirt domain definition files between kvm hosts"
+
+  echo ""
+}
 #CURROPT=""
 #while [ "$#" -gt 0 ]; do
 #  case "$1" in
@@ -10,7 +34,10 @@
 #  esac
 #done
 #eval set -- $CURROPT
-
+if [ "$1" = "" ] ; then
+  _help
+  exit 0
+fi
 if [[ "$1" == "up" && "$2" != "" ]] ; then
   DOM="$2"
   virsh start $DOM

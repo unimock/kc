@@ -1,0 +1,41 @@
+#!/bin/bash
+
+_help() {
+  echo "usage: `basename` $0 <domain>"
+}
+
+if [ "$1" = "" ] ; then
+  _help
+  exit 0
+fi
+
+DOM="$1"
+
+echo "#"
+echo "# libvirt chackpoint infos in /var/lib/libvirt/qemu/checkpoint/$DOM/:"
+echo "#"
+ls -la /var/lib/libvirt/qemu/checkpoint/$DOM/
+
+
+echo "#"
+echo "# virtnbdbackup checkpoint infos in /tsp0/sync/backup/$DOM/:"
+echo "#"
+
+ls -la /tsp0/sync/backup/$DOM/
+
+echo "#"
+echo "# libvirt chackpoint infos:"
+echo "#"
+vircpt -d $DOM list
+
+echo "#"
+echo "# qemu-img bitmap infos:"
+echo "#"
+qemu-img info -U /tsp0/images/${DOM}_0.qcow2
+
+
+echo "#"
+echo "# virsh checkpoint-list for $DOM:"
+echo "#"
+
+virsh checkpoint-list $DOM

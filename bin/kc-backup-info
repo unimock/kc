@@ -1,7 +1,7 @@
 #!/bin/bash
 
 _help() {
-  echo "usage: `basename` $0 <domain>"
+  echo "usage: `basename $0` <domain>"
 }
 
 if [ "$1" = "" ] ; then
@@ -10,6 +10,18 @@ if [ "$1" = "" ] ; then
 fi
 
 DOM="$1"
+
+
+echo "#"
+echo "# "
+echo "#"
+
+unset imgs ; declare -A imgs
+eval $( virsh domblklist $DOM --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+for dev in ${!imgs[@]}; do
+  echo $dev : ${imgs[$dev]}
+  qemu-img info -U ${imgs[$dev]}
+done
 
 echo "#"
 echo "# libvirt chackpoint infos in /var/lib/libvirt/qemu/checkpoint/$DOM/:"
@@ -27,12 +39,6 @@ echo "#"
 echo "# libvirt chackpoint infos:"
 echo "#"
 vircpt -d $DOM list
-
-echo "#"
-echo "# qemu-img bitmap infos:"
-echo "#"
-qemu-img info -U /tsp0/images/${DOM}_0.qcow2
-
 
 echo "#"
 echo "# virsh checkpoint-list for $DOM:"

@@ -34,12 +34,10 @@ _help() {
     echo "#"
     echo "# other usefull kc commands:"
     echo "#"
-    echo "kc-tool mig|ls       # migration/list running VMs"
     echo "kc-backup <command>  # USB-HD backup/restore" 
     echo "kc-status gluster    # show gluster info and healing"
     echo "kc-sparsify <domain> # shutdown, sparsify images and start domian"
     echo "kc-install init      # initialize kc environment"
-    echo "kc-syncxml           # sync libvirt domain definition files between kvm hosts"
     echo ""
   fi
 }

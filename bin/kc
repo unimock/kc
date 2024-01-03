@@ -1,83 +1,191 @@
 #!/bin/bash
 
+. /opt/kc/etc/config
+#host_list="kvm1 kvm2 kvm3 kvm8 kvm9"
+
+host_list=$( cat ${KC_TSP_DIR}/config/hosts.conf )
+
+##############################################################################################
 _help() {
   IAM=`basename $0`
-  echo "#"
-  echo "# usage: $IAM up|down|rm <domain>"
-  echo "#"
-  echo "# examples:"
-  echo "#"
-  echo "DOM=test"
-  echo $IAM' up   $DOM       # start VM'
-  echo $IAM' down $DOM       # shutdown VM and wait for shut off'
-  echo $IAM' rm   $DOM       # undefine and remove VM and assigned images'
+  if [ "$1" = "" ] ; then
+    echo "# usage: "
+    echo ""
+    echo "$IAM [--short] [--state=<state>] [--domain=<domain>] <command>"
+    echo "#"
+    echo "# commands:"
+    echo "#"
+    echo " * ls                # human readable list"
+    echo " * list              # list domains only (scripting output)"
+    echo " * up                # shutoff domain and wait until is down"
+    echo " * down              # start domain"
+    echo " * rm                # destroy, undefine domain and assigned images"
+    echo " * mig <target-node> # live migration to target"
 
-  echo "#"
-  echo "# other usefull kc commands:"
-  echo "#"
-  echo "kc-tool mig|ls       # migration/list running VMs"
-  echo "kc-backup <command>  # USB-HD backup/restore" 
-  echo "kc-status gluster    # show gluster info and healing"
-  echo "kc-sparsify <domain> # shutdown, sparsify images and start domian"
-  echo "kc-install init      # initialize kc environment"
-  echo "kc-syncxml           # sync libvirt domain definition files between kvm hosts"
 
-  echo ""
+    echo "#"
+    echo "# examples:"
+    echo "#"
+    echo "$IAM --node=kvm2   mig kvm1 # migration all domains from kvm2 to kvm1"
+    echo "$IAM --domain=test mig kvm2 # migration domain test to kvm2"
+
+    echo ""
+
+    echo "#"
+    echo "# other usefull kc commands:"
+    echo "#"
+    echo "kc-tool mig|ls       # migration/list running VMs"
+    echo "kc-backup <command>  # USB-HD backup/restore" 
+    echo "kc-status gluster    # show gluster info and healing"
+    echo "kc-sparsify <domain> # shutdown, sparsify images and start domian"
+    echo "kc-install init      # initialize kc environment"
+    echo "kc-syncxml           # sync libvirt domain definition files between kvm hosts"
+    echo ""
+  fi
 }
-#CURROPT=""
-#while [ "$#" -gt 0 ]; do
-#  case "$1" in
-#    -*)  ; shift 1 ;;
-#    --escape)  shift 2 ;;
-#    --*)       shift 1 ;;
-#    *)   CURROPT="$CURROPT \"$1\"" ; shift 1 ;;
-#  esac
-#done
-#eval set -- $CURROPT
+##############################################################################################
+_list() {
+  node=$1 ; domain=$2 ; state=$3
+  printf "%s\n" "$domain"
+  return 0
+}
+##############################################################################################
+_ls() {
+  node=$1 ; domain=$2 ; state=$3
+  if [[ "$opt_short" = "1" ]] ; then
+    printf "%s\n" "$domain"
+  else
+    printf "%-16s  %-8s  %s\n" "$domain" "$state" "$node"
+  fi
+      #unset img_arr ; declare -A img_arr
+      #eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+      #for dev in ${!img_arr[@]}; do
+      #  echo "         $dev : ${img_arr[$dev]}"
+      #  #qemu-img info -U ${img_arr[$dev]}
+      #done
+  return 0
+}
+##############################################################################################
+_down() {
+  node=$1 ; domain=$2 ; state=$3
+  if [[ "$state" != "shutoff" ]] ; then
+    ssh -q $node virsh shutdown ${domain} >/dev/null
+    # wait until system is down, timeout 120s
+    i=0
+    while true ; do
+      i=$(( i + 1 ))
+      sleep 1
+      s=$( ssh -q $node virsh domstate ${domain} )
+      printf "."
+      if [[ "$s" == "shut off" ]] ; then
+        break ;
+      fi
+      if [ $i -ge 180 ] ; then
+         echo "error wait for shutoff!!!!"
+         return 1
+      fi
+    done
+    printf "\n"
+  fi
+  return $?
+}
+##############################################################################################
+_up() {
+  node=$1 ; domain=$2 ; state=$3
+  ssh -q $node virsh start $domain >/dev/null
+  return $?
+}
+##############################################################################################
+_rm() {
+  node=$1 ; domain=$2 ; state=$3
+  #if [ "$state" != "shutoff" ] ; then
+  #  ssh -q $node virsh destroy $domain
+  #fi
+  #ssh -q $node virsh undefine $domain --remove-all-storage --checkpoints-metadata --snapshots-metadata
+  return $?
+}
+##############################################################################################
+_mig() {
+  node=$1 ; domain=$2 ; state=$3 ; target=$4
+  if [ "$target" = "" ] ; then
+    echo "error: migration target node not given!"
+    return 1
+  fi
+  if [ "$state" = "backup" ] ; then
+    # do not migrate backup domains
+    return 0
+  fi
+  ssh -q $target virsh undefine "[${domain}:${target}]" 2>/dev/null
+  ssh -q $node "virsh dumpxml $domain > /tmp/dump.xml"
+  ssh -q $node "sed -i \"s|<name>${domain}</name>|<name>[${domain}:${node}]</name>|g\" /tmp/dump.xml"
+  # hardware addresses need to be removed, libvirt will assign new addresses automatically
+  ssh -q $node sed -i /uuid/d /tmp/dump.xml
+  #keep mac address  sed -i '/mac address/d' /tmp/dump.xml
+  ssh -q $node   virsh migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
+  ssh -q $target virsh autostart $domain
+  ssh -q $node   virsh define /tmp/dump.xml
+  #chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/*
+  return 0
+}
+##############################################################################################
+##############################################################################################
+# magic main
+##############################################################################################
+opt_state=""
+opt_short=""
+opt_node=""
+opt_domain=""
+CURROPT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --state=*)  opt_state=${1#*=}  ; shift 1 ;;
+    --domain=*) opt_domain=${1#*=} ; shift 1 ;;
+    --node=*)   opt_node=${1#*=}   ; shift 1 ;;
+    --short)    opt_short="1"      ; shift 1 ;;
+    *)   CURROPT="$CURROPT \"$1\"" ; shift 1 ;;
+  esac
+done
+eval set -- $CURROPT
+
+
 if [ "$1" = "" ] ; then
   _help
   exit 0
 fi
-if [[ "$1" == "up" && "$2" != "" ]] ; then
-  DOM="$2"
-  virsh start $DOM
-  exit $?
+
+CMD="$1"
+shift
+
+if [[ "$CMD" == "backup" ]] ; then
+  if [[ "$opt_node" == ""  ]] ; then
+    echo "error: backup node not given. Use --node=<node>."
+    exit 1
+  fi
+  ssh -q $opt_node /opt/kc/bin/kc-newbackup $@
+  exit $? 
 fi
 
-if [[ "$1" == "down" && "$2" != "" ]] ; then
-  CMD="$1"
-  DOM="$2"
-  state=$( virsh domstate ${DOM} )
-  if [[ "$state" != "shut off" ]] ; then
-    virsh shutdown ${DOM}
-    i=0
-    # wait until system is down, timeout 120s
-    while true ; do
-      i=$(( i + 1 ))
-      sleep 1
-      s=$( virsh domstate ${DOM} )
-      echo "  wait until system is down : i=$i <$s>"
-      if [[ "$s" == "shut off" ]] ; then
-        break ;
-      fi
-      if [ $i -ge 120 ] ; then
-         echo "error wait for off!!!!"
-         exit 1
-      fi
-    done
-  fi
-  exit 0
-fi
+dom_arr=()
+for node in $host_list ; do
+  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\""}' `)
+done
 
-if [[ "$1" == "rm" && "$2" != "" ]] ; then
-  CMD="$1"
-  DOM="$2"
-  state=$(virsh domstate $DOM)
-  if [ "$state" != "shut off" ] ; then
-    virsh destroy $DOM
+for value in ${dom_arr[@]} ; do
+  domain=""; node="" ; state=""
+  eval $value
+  if [[ "$domain" == "["*"]"   ]] ; then
+    state="backup"
   fi
-  virsh undefine $DOM --remove-all-storage --checkpoints-metadata --snapshots-metadata
-  exit $?
-fi 
+  if [[  "$opt_domain" != "" &&   "$opt_domain" != "$domain" ]] ; then
+    continue
+  fi
+  if [[  "$opt_node" != "" &&   "$opt_node" != "$node" ]] ; then
+    continue
+  fi
+  if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
+    _${CMD} "$node" "$domain" "$state" $@
+  fi
+done
+exit 0 
 
 

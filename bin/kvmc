@@ -62,7 +62,7 @@ _gluster_check() {
     return 0
   fi 
   # check gluster status
-   list=$( ssh -q $node gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
+  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
   for i in $list ; do
     if [ "$i" != "Connected" ] ; then
       echo "gluster status error <$i>"
@@ -70,7 +70,7 @@ _gluster_check() {
     fi
   done
   # check gluster is in sync
-  list=$( ssh -q $node gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
+  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
   declare -i count
   count=0
   for i in $list ; do count=count+${i} ; done
@@ -245,9 +245,9 @@ if [ "$CMD" = "init" ] ; then
   exit 0
 fi
 dom_arr=()
+_gluster_check
+gstate=$?
 for node in $host_list ; do
-  _gluster_check $node
-  gstate=$?
   dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\";gluster=\""'$gstate'  "\""}' `)
 done
 

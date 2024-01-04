@@ -242,7 +242,8 @@ if [ "$CMD" = "status" ] ; then
   exit 0
 fi
 if [ "$CMD" = "init" ] ; then
-  
+  echo TBD
+  exit 0
 fi
 dom_arr=()
 for node in $host_list ; do

@@ -18,10 +18,12 @@ _usage()
     echo ""
     echo "usage:"
     echo ""
-    echo "`basename $0` mount|umount|reset|status"
+    echo "`basename $0` mount|umount|reset|status|info"
+    echo ""
     echo "`basename $0` simul|backup [<domain>]"
     echo "`basename $0` restore <domain>"
     echo "`basename $0` delete <domain> # delete domain backup from backup device"
+    echo "`basename $0` info <domain>   # virtnbdbackup debug infos"
     echo ""
     exit 0
   fi
@@ -69,6 +71,30 @@ _umount()
   if [ -f /var/kc/device  ] ; then
     hdparm -y  $(cat /var/kc/device) 2>/dev/null # spin-off disk
   fi
+}
+#############################
+_info()
+{
+  DOM="$1"
+  printf "#\n#\n#\n"
+  unset imgs ; declare -A imgs
+  eval $( virsh domblklist $DOM --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+  for dev in ${!imgs[@]}; do
+    echo $dev : ${imgs[$dev]}
+    qemu-img info -U ${imgs[$dev]}
+  done
+
+  printf "#\n# libvirt chackpoint infos in /var/lib/libvirt/qemu/checkpoint/$DOM/:\n#\n"
+  ls -la /var/lib/libvirt/qemu/checkpoint/$DOM/
+
+  printf "#\n# virtnbdbackup checkpoint infos in /tsp0/sync/backup/$DOM/:\n#\n"
+  ls -la /tsp0/sync/backup/$DOM/
+
+  printf "#\n# libvirt chackpoint infos:\n#\n"
+  vircpt -d $DOM list
+
+  printf "#\n# virsh checkpoint-list for $DOM:\n#\n"
+  virsh checkpoint-list $DOM
 }
 #############################
 _status()
@@ -119,6 +145,7 @@ _status()
 CMD="$1"
 VMB="$2"
 
+
 if [ "$CMD" = "mount" ] ; then
   _mount
   exit 0
@@ -131,6 +158,14 @@ if [ "$CMD" = "status" ] ; then
   _status
   exit 0
 fi
+if [ "$CMD" = "info" ] ; then
+  if [ "$VMB" = "" ] ; then
+     echo "error: domain not given!"
+     exit 1
+  fi
+  _info $VMB
+  exit 0
+fi 
 
 _usage $CMD
 if [ "$CMD" != "backup" -a "$CMD" != "simul"  -a "$CMD" != "restore"  -a "$CMD" != "delete" ] ; then

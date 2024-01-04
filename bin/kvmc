@@ -43,7 +43,6 @@ _help() {
     echo "kc-backup <command>  # USB-HD backup/restore" 
     echo "kc-newbackup         # USB-HD backup/restore"
     echo "kc-temp-disk"
-    echo "kc-backup-info"
     echo ""
   fi
 }

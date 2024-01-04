@@ -173,7 +173,7 @@ fi
 # restore domain
 #
 if [ "$CMD" = "restore" ] ; then
-  /opt/kc/bin/kc --domain $VMB rm complete
+  /opt/kc/bin/kc --domain=$VMB rm complete
   virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
   ret=$?
   if [ "$ret" != "0" ] ; then
@@ -181,7 +181,7 @@ if [ "$CMD" = "restore" ] ; then
     _umount
     exit 1
   fi
-  /opt/kc/bin/kc --domain $VMB up
+  /opt/kc/bin/kc --domain=$VMB up
   rm -rvf  ${KC_TSP_DIR}/sync/backup/$VMB
   mkdir -p ${KC_TSP_DIR}/sync/backup/$VMB
   rm -f    ${KC_TSP_DIR}/sync/backup/$VMB.conf  # mark this backup for removal on next backup, so full backup will be done

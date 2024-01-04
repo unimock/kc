@@ -1,6 +1,14 @@
 #!/bin/bash
+CONFIG=/opt/kc/etc/config
 
-. /opt/kc/etc/config
+if [ ! -f  ${CONFIG} ] ; then
+  printf "initialize default kc configuration in <${CONFIG}>:"
+  mkdir -p $(dirname ${CONFIG})
+  echo 'KC_TSP_DIR="/tsp0"' >> ${CONFIG}
+  cat ${CONFIG} | sed -e "s|^|> |g"
+  exit 0
+fi
+. ${CONFIG}
 
 host_list=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 ##############################################################################################
@@ -33,8 +41,9 @@ _help() {
     echo "# other usefull kc commands:"
     echo "#"
     echo "kc-backup <command>  # USB-HD backup/restore" 
-    echo "kc-status gluster    # show gluster info and healing"
-    echo "kc-install init      # initialize kc environment"
+    echo "kc-newbackup         # USB-HD backup/restore"
+    echo "kc-temp-disk"
+    echo "kc-backup-info"
     echo ""
   fi
 }
@@ -223,7 +232,6 @@ fi
 CMD="$1"
 shift
 if [ "$CMD" = "status" ] ; then
-  
   gluster volume status cust      | sed -e "s|^|  |g"
   echo "---------------"          | sed -e "s|^|  |g"
   gluster volume info   cust      | sed -e "s|^|  |g"
@@ -233,7 +241,9 @@ if [ "$CMD" = "status" ] ; then
   echo ""
   exit 0
 fi
-
+if [ "$CMD" = "init" ] ; then
+  
+fi
 dom_arr=()
 for node in $host_list ; do
   _gluster_check $node

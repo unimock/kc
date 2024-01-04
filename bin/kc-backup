@@ -9,13 +9,8 @@ MPOINT=/backup
 NAME="kvm-bup"
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 EXCLUDE="*_temp_disk.qcow2"
-
 SSH_OPT=""
-#SSH_OPT="-i /home/user/dc/hosts/id_ed25519 -p 11111"
-#eval `ssh-agent`
-# ssh-add 
-#sudo -E -s /opt/kc/kc-backup backup
-#
+
 #############################
 _usage()
 {
@@ -167,7 +162,7 @@ echo "===================================================================="
   for h in $HOSTS ; do
     vms=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
     for vm in $vms ; do
-        if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+        if [[ $vm == \[*:kvm[1-9]\] ]] ; then
           continue ;
         fi
         state=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )

@@ -4,7 +4,6 @@
 #host_list="kvm1 kvm2 kvm3 kvm8 kvm9"
 
 host_list=$( cat ${KC_TSP_DIR}/config/hosts.conf )
-
 ##############################################################################################
 _help() {
   IAM=`basename $0`
@@ -21,7 +20,7 @@ _help() {
     echo " * down              # start domain"
     echo " * rm                # destroy, undefine domain and assigned images"
     echo " * mig <target-node> # live migration to target"
-
+    echo " * sparsify          # sparsify assigned images"
 
     echo "#"
     echo "# examples:"
@@ -36,7 +35,6 @@ _help() {
     echo "#"
     echo "kc-backup <command>  # USB-HD backup/restore" 
     echo "kc-status gluster    # show gluster info and healing"
-    echo "kc-sparsify <domain> # shutdown, sparsify images and start domian"
     echo "kc-install init      # initialize kc environment"
     echo ""
   fi
@@ -53,14 +51,17 @@ _ls() {
   if [[ "$opt_short" = "1" ]] ; then
     printf "%s\n" "$domain"
   else
-    printf "%-16s  %-8s  %s\n" "$domain" "$state" "$node"
+    unset img_arr ; declare -A img_arr
+    eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    images=""
+    for img in ${!img_arr[@]}; do
+      images="$images,$img:${img_arr[$img]}"
+      #echo "         $img:${img_arr[$img]}"
+      #  #qemu-img info -U ${img_arr[$img]}
+    done
+    images=${images#,}
+    printf "%-16s  %-8s  %-6s %s\n" "$domain" "$state" "$node" ""$images""
   fi
-      #unset img_arr ; declare -A img_arr
-      #eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
-      #for dev in ${!img_arr[@]}; do
-      #  echo "         $dev : ${img_arr[$dev]}"
-      #  #qemu-img info -U ${img_arr[$dev]}
-      #done
   return 0
 }
 ##############################################################################################
@@ -95,11 +96,23 @@ _up() {
 }
 ##############################################################################################
 _rm() {
-  node=$1 ; domain=$2 ; state=$3
-  #if [ "$state" != "shutoff" ] ; then
-  #  ssh -q $node virsh destroy $domain
-  #fi
+  node=$1 ; domain=$2 ; state=$3 ; subcmd=$4
+  if [[ "$subcmd" != "domain" && "$subcmd" != "complete" ]] ; then
+    echo "error sub-command domain or complete not given!"
+    return 1
+  fi
+  if [[ "$state" != "shutoff" ]] ; then
+    echo ssh -q $node virsh destroy  $domain
+  fi
   #ssh -q $node virsh undefine $domain --remove-all-storage --checkpoints-metadata --snapshots-metadata
+  if [[ "$subcmd" == "complete" ]] ; then
+    unset img_arr ; declare -A img_arr
+    eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    for img in ${!img_arr[@]}; do
+      echo ssh -q $node rm -f ${img_arr[$img]}
+    done
+  fi
+  echo ssh -q $node virsh undefine $domain --checkpoints-metadata --snapshots-metadata
   return $?
 }
 ##############################################################################################
@@ -110,7 +123,7 @@ _mig() {
     return 1
   fi
   if [ "$state" = "backup" ] ; then
-    # do not migrate backup domains
+    echo "skipping backup domain <$domain>"
     return 0
   fi
   ssh -q $target virsh undefine "[${domain}:${target}]" 2>/dev/null
@@ -126,6 +139,21 @@ _mig() {
   return 0
 }
 ##############################################################################################
+_sparsify() {
+  node=$1 ; domain=$2 ; state=$3
+  if [ "$state" = "backup" ] ; then
+    echo "skipping backup domain <$domain>"
+    return 0
+  fi
+  _down $@
+  unset img_arr ; declare -A img_arr
+  eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+  for img in ${!img_arr[@]}; do
+    ssh -q $node virt-sparsify --in-place ${img_arr[$img]}
+  done
+  _up $@
+  return 0
+}
 ##############################################################################################
 # magic main
 ##############################################################################################

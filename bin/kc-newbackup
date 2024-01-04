@@ -228,7 +228,7 @@ if [ "$CMD" = "backup" ] ; then
   for h in $HOSTS ; do
     vms=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
     for vm in $vms ; do
-        if [[ $vm == \[*@kvm[1-9]\] ]] ; then
+        if [[ $vm == \[:@kvm[1-9]\] ]] ; then
           continue ;
         fi
         state=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )

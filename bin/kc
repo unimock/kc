@@ -14,14 +14,13 @@ _help() {
     echo "#"
     echo "# commands:"
     echo "#"
-    echo " * ls                # human readable list"
-    echo " * list              # list domains only (scripting output)"
-    echo " * up                # shutoff domain and wait until is down"
-    echo " * down              # start domain"
-    echo " * rm                # destroy, undefine domain and assigned images"
-    echo " * mig <target-node> # live migration to target"
-    echo " * sparsify          # sparsify assigned images"
-
+    echo " * ls                 # human readable list"
+    echo " * list               # list domains only (scripting output)"
+    echo " * up                 # shutoff domain and wait until is down"
+    echo " * down               # start domain"
+    echo " * rm doamin|complete # destroy, undefine domain and assigned images"
+    echo " * mig <target-node>  # live migration to target"
+    echo " * sparsify           # sparsify assigned images"
     echo "#"
     echo "# examples:"
     echo "#"
@@ -102,17 +101,21 @@ _rm() {
     return 1
   fi
   if [[ "$state" != "shutoff" ]] ; then
-    echo ssh -q $node virsh destroy  $domain
+    ssh -q $node virsh destroy  $domain
   fi
-  #ssh -q $node virsh undefine $domain --remove-all-storage --checkpoints-metadata --snapshots-metadata
   if [[ "$subcmd" == "complete" ]] ; then
     unset img_arr ; declare -A img_arr
     eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     for img in ${!img_arr[@]}; do
-      echo ssh -q $node rm -f ${img_arr[$img]}
+      KC_BACKUP_EXCLUDE="*_temp_disk.qcow2"
+      if [[ "$(basename ${img_arr[$img]})" == $KC_BACKUP_EXCLUDE ]]; then
+        echo "skipping deletion of image: <${img_arr[$img]}>, because of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
+        continue
+      fi
+      ssh -q $node rm -f ${img_arr[$img]}
     done
   fi
-  echo ssh -q $node virsh undefine $domain --checkpoints-metadata --snapshots-metadata
+  ssh -q $node virsh undefine $domain --checkpoints-metadata --snapshots-metadata #--remove-all-storage
   return $?
 }
 ##############################################################################################

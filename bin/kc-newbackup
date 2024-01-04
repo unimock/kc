@@ -173,9 +173,7 @@ fi
 # restore domain
 #
 if [ "$CMD" = "restore" ] ; then
-  virsh destroy  $VMB
-  # Achtung: Platten, die nicht gesichert werden dürfen nicht gelöscht werden!!!
-  virsh undefine $VMB --remove-all-storage --checkpoints-metadata --snapshots-metadata
+  /opt/kc/bin/kc --domain $VMB rm complete
   virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
   ret=$?
   if [ "$ret" != "0" ] ; then
@@ -183,10 +181,10 @@ if [ "$CMD" = "restore" ] ; then
     _umount
     exit 1
   fi
-  virsh start    $VMB
+  /opt/kc/bin/kc --domain $VMB up
   rm -rvf  ${KC_TSP_DIR}/sync/backup/$VMB
   mkdir -p ${KC_TSP_DIR}/sync/backup/$VMB
-  rm -f    ${KC_TSP_DIR}/sync/backup/$VMB.conf  # remove this backup for next full backup
+  rm -f    ${KC_TSP_DIR}/sync/backup/$VMB.conf  # mark this backup for removal on next backup, so full backup will be done
   _umount
   exit 0
 fi

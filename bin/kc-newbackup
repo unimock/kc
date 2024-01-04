@@ -9,14 +9,8 @@ NAME="kvm-bup"
 HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 KC_BACKUP_EXCLUDE=""
 
-KC_BACKUP_SSH_OPT=""
-
 DEV=""
 
-#eval `ssh-agent`
-# ssh-add 
-#sudo -E -s /opt/kc/bin/kc-newbackup simul
-#
 #############################
 _usage()
 {
@@ -204,7 +198,7 @@ if [ "$CMD" = "backup" ] ; then
     #
     for host in $HOSTS ; do
       mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-      ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+      ssh -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
     done
     rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
     #
@@ -225,13 +219,12 @@ if [ "$CMD" = "backup" ] ; then
   #
   mkdir -p ${KC_TSP_DIR}/sync/backup
   echo "===================================================================="
-  for h in $HOSTS ; do
-    vms=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
+    vms=$( virsh list --all --name )
     for vm in $vms ; do
-        if [[ $vm == \[:kvm[1-9]\] ]] ; then
+        if [[ $vm == \[*:kvm[1-9]\] ]] ; then
           continue ;
         fi
-        state=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+        state=$( virsh domstate ${vm} )
         _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
         echo "####################################################"
         echo "#  $vm @ ${h} ($state) ${_DATE}"
@@ -239,8 +232,8 @@ if [ "$CMD" = "backup" ] ; then
         # Get list of disk names and image paths
         unset imgs ; declare -A imgs
         disc=""
-        disc=$( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
-        eval $( ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+        disc=$( virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
         if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
             #
             # remove former backups from device, if new device detected
@@ -279,14 +272,8 @@ if [ "$CMD" = "backup" ] ; then
             echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
           fi
           echo "backup für Domain <$vm> ist durchgeführt"
-          if [ "$CMD" != "simul" ] ; then
-            #echo "ssh ${KC_BACKUP_SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
-            true
-          fi
-
         fi
     done
-  done
   echo "===================================================================="
   df -h  $MPOINT
   usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )

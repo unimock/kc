@@ -1,7 +1,6 @@
 #!/bin/bash
 
 . /opt/kc/etc/config
-#host_list="kvm1 kvm2 kvm3 kvm8 kvm9"
 
 host_list=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 ##############################################################################################
@@ -14,6 +13,7 @@ _help() {
     echo "#"
     echo "# commands:"
     echo "#"
+    echo " * status             # show gluster status"
     echo " * ls                 # human readable list"
     echo " * list               # list domains only (scripting output)"
     echo " * up                 # shutoff domain and wait until is down"
@@ -38,15 +38,49 @@ _help() {
     echo ""
   fi
 }
+
+
+#############################
+_gluster_check() {
+  node=$1
+
+  FI=${KC_TSP_DIR}/config/gluster.conf
+  if [ ! -e $FI ] ; then
+    echo "missing gluster definition file <$FI>"
+    return 1
+  fi
+  . $FI
+  if [ "$KC_GLUSTER_ACTIVE"  = "false" ] ; then
+    return 0
+  fi 
+  # check gluster status
+   list=$( ssh -q $node gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
+  for i in $list ; do
+    if [ "$i" != "Connected" ] ; then
+      echo "gluster status error <$i>"
+      return 1
+    fi
+  done
+  # check gluster is in sync
+  list=$( ssh -q $node gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
+  declare -i count
+  count=0
+  for i in $list ; do count=count+${i} ; done
+  if [ "$count" != "0" ] ; then
+    echo "gluster not in sync (entries=$count)"
+    return 1
+  fi
+  return 0
+}
 ##############################################################################################
 _list() {
-  node=$1 ; domain=$2 ; state=$3
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
   printf "%s\n" "$domain"
   return 0
 }
 ##############################################################################################
 _ls() {
-  node=$1 ; domain=$2 ; state=$3
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
   if [[ "$opt_short" = "1" ]] ; then
     printf "%s\n" "$domain"
   else
@@ -59,13 +93,13 @@ _ls() {
       #  #qemu-img info -U ${img_arr[$img]}
     done
     images=${images#,}
-    printf "%-16s  %-8s  %-6s %s\n" "$domain" "$state" "$node" ""$images""
+    printf "%-16s  %-8s  %-6s %-1s %s\n" "$domain" "$state" "$node" "$gluster" "$images"
   fi
   return 0
 }
 ##############################################################################################
 _down() {
-  node=$1 ; domain=$2 ; state=$3
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
   if [[ "$state" != "shutoff" ]] ; then
     ssh -q $node virsh shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
@@ -89,13 +123,13 @@ _down() {
 }
 ##############################################################################################
 _up() {
-  node=$1 ; domain=$2 ; state=$3
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
   ssh -q $node virsh start $domain >/dev/null
   return $?
 }
 ##############################################################################################
 _rm() {
-  node=$1 ; domain=$2 ; state=$3 ; subcmd=$4
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4 ; subcmd=$5
   if [[ "$subcmd" != "domain" && "$subcmd" != "complete" ]] ; then
     echo "error sub-command domain or complete not given!"
     return 1
@@ -120,7 +154,7 @@ _rm() {
 }
 ##############################################################################################
 _mig() {
-  node=$1 ; domain=$2 ; state=$3 ; target=$4
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4; target=$5
   if [ "$target" = "" ] ; then
     echo "error: migration target node not given!"
     return 1
@@ -128,6 +162,10 @@ _mig() {
   if [ "$state" = "backup" ] ; then
     echo "skipping backup domain <$domain>"
     return 0
+  fi
+  if [ "$gluster" != "0" ] ; then
+    echo "error: gluster error!"
+    return 1
   fi
   ssh -q $target virsh undefine "[${domain}:${target}]" 2>/dev/null
   ssh -q $node "virsh dumpxml $domain > /tmp/dump.xml"
@@ -143,7 +181,7 @@ _mig() {
 }
 ##############################################################################################
 _sparsify() {
-  node=$1 ; domain=$2 ; state=$3
+  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
   if [ "$state" = "backup" ] ; then
     echo "skipping backup domain <$domain>"
     return 0
@@ -184,23 +222,27 @@ fi
 
 CMD="$1"
 shift
-
-if [[ "$CMD" == "backup" ]] ; then
-  if [[ "$opt_node" == ""  ]] ; then
-    echo "error: backup node not given. Use --node=<node>."
-    exit 1
-  fi
-  ssh -q $opt_node /opt/kc/bin/kc-newbackup $@
-  exit $? 
+if [ "$CMD" = "status" ] ; then
+  
+  gluster volume status cust      | sed -e "s|^|  |g"
+  echo "---------------"          | sed -e "s|^|  |g"
+  gluster volume info   cust      | sed -e "s|^|  |g"
+  echo "---------------"          | sed -e "s|^|  |g"
+  gluster volume heal   cust info | sed -e "s|^|  |g"
+  echo "---------------"          | sed -e "s|^|  |g"
+  echo ""
+  exit 0
 fi
 
 dom_arr=()
 for node in $host_list ; do
-  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\""}' `)
+  _gluster_check $node
+  gstate=$?
+  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\";gluster=\""'$gstate'  "\""}' `)
 done
 
 for value in ${dom_arr[@]} ; do
-  domain=""; node="" ; state=""
+  domain=""; node="" ; state="" ; gluster=""
   eval $value
   if [[ "$domain" == "["*"]"   ]] ; then
     state="backup"
@@ -212,7 +254,7 @@ for value in ${dom_arr[@]} ; do
     continue
   fi
   if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
-    _${CMD} "$node" "$domain" "$state" $@
+    _${CMD} "$node" "$domain" "$state" "$gluster" $@
   fi
 done
 exit 0 

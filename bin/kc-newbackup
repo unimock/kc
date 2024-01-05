@@ -18,9 +18,9 @@ _usage()
     echo ""
     echo "usage:"
     echo ""
-    echo "`basename $0` mount|umount|reset|status|info"
+    echo "`basename $0` mount|umount"
     echo ""
-    echo "`basename $0` simul|backup [<domain>]"
+    echo "`basename $0` backup [<domain>]"
     echo "`basename $0` restore <domain>"
     echo "`basename $0` delete <domain> # delete domain backup from backup device"
     echo "`basename $0` info <domain>   # virtnbdbackup debug infos"
@@ -99,42 +99,11 @@ _info()
 #############################
 _status()
 {
-  FI=${KC_TSP_DIR}/config/gluster.conf
-  if [ ! -e $FI ] ; then
-    echo "error: missing gluster definition file <$FI>"
+  kvmc gluster_check
+  if [ "$?" != "0" ] ; then
     sf_set_error
     sf_end
   fi
-  . $FI
-  if [ "$KC_GLUSTER_ACTIVE"  = "false" ] ; then
-    echo "gluster not activated in $FI, so skipping gluster check!"
-    return 0
-  fi 
-  #
-  # check gluster status
-  #
-  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
-  for i in $list ; do
-    if [ "$i" != "Connected" ] ; then
-      echo "gluster status error <$i>"
-      sf_set_error
-      sf_end
-    fi
-  done
-  echo "gluster_status=Connected"
-  #
-  # check gluster is in sync
-  #
-  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
-  declare -i count
-  count=0
-  for i in $list ; do count=count+${i} ; done
-  if [ "$count" != "0" ] ; then
-    echo "gluster not in sync (entries=$count)"
-    sf_set_error
-    sf_end
-  fi
-  echo "gluster_entries=0"
 }
 ################################################################################################
 # 
@@ -154,10 +123,6 @@ if [ "$CMD" = "umount" ] ; then
   _umount
   exit 0
 fi
-if [ "$CMD" = "status" ] ; then
-  _status
-  exit 0
-fi
 if [ "$CMD" = "info" ] ; then
   if [ "$VMB" = "" ] ; then
      echo "error: domain not given!"
@@ -168,7 +133,7 @@ if [ "$CMD" = "info" ] ; then
 fi 
 
 _usage $CMD
-if [ "$CMD" != "backup" -a "$CMD" != "simul"  -a "$CMD" != "restore"  -a "$CMD" != "delete" ] ; then
+if [ "$CMD" != "backup" -a "$CMD" != "restore"  -a "$CMD" != "delete" ] ; then
   echo "unkomwn command given"
   exit 1
 fi
@@ -190,8 +155,9 @@ if [ "$KC_BACKUP_AREA" = "" ] ; then
   echo "error: backup area <KC_BACKUP_AREA> not set in <${KC_TSP_DIR}/config/kc-backup.conf>."
   exit 1
 fi
-
-
+#
+# delete domain from usb
+#
 if [ "$CMD" = "delete" ] ; then
   if [ "$VMB" = ""  ] ; then
     echo "error: nod domain given"
@@ -202,8 +168,6 @@ if [ "$CMD" = "delete" ] ; then
   _umount
   exit 0
 fi
-
-
 #
 # restore domain
 #
@@ -223,7 +187,9 @@ if [ "$CMD" = "restore" ] ; then
   _umount
   exit 0
 fi
-
+#
+# backup
+#
 if [ "$CMD" = "backup" ] ; then
   if [ "$VMB" = "" ] ; then # only for complete backup
     #
@@ -252,61 +218,59 @@ if [ "$CMD" = "backup" ] ; then
   #
   mkdir -p ${KC_TSP_DIR}/sync/backup
   echo "===================================================================="
-    vms=$( virsh list --all --name )
-    for vm in $vms ; do
-        if [[ $vm == \[*:kvm[1-9]\] ]] ; then
-          continue ;
+  vms=$( virsh list --all --name )
+  for vm in $vms ; do
+    if [[ $vm == \[*:kvm[1-9]\] ]] ; then
+      continue ;
+    fi
+    state=$( virsh domstate ${vm} )
+    _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
+    echo "####################################################"
+    echo "#  $vm @ ${h} ($state) ${_DATE}"
+    echo "####################################################"
+    # Get list of disk names and image paths
+    unset imgs ; declare -A imgs
+    disc=""
+    disc=$( virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+    eval $( virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+    if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
+        #
+        # remove former backups from device, if new device detected
+        #
+      last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf 2>/dev/null )
+      if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
+        rm -rvf  $MPOINT/$KC_BACKUP_AREA/domains/$vm 
+        mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/$vm
+      fi
+      #
+      # exclude images
+      #
+      exclude_disks=""
+      for d in ${disc[@]}; do
+        img=${imgs[${d}]}
+        if [[ "$(basename $img)" == $KC_BACKUP_EXCLUDE ]]; then
+          exclude_disks="${exclude_disks},$d"
+          echo "skipping backup of image: <$img>, because it of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
         fi
-        state=$( virsh domstate ${vm} )
-        _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
-        echo "####################################################"
-        echo "#  $vm @ ${h} ($state) ${_DATE}"
-        echo "####################################################"
-        # Get list of disk names and image paths
-        unset imgs ; declare -A imgs
-        disc=""
-        disc=$( virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
-        eval $( virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
-        if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
-            #
-            # remove former backups from device, if new device detected
-            #
-          last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf 2>/dev/null )
-          if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
-            rm -rvf  $MPOINT/$KC_BACKUP_AREA/domains/$vm 
-            mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/$vm
-          fi
-          #
-          # exclude images
-          #
-          exclude_disks=""
-          for d in ${disc[@]}; do
-            img=${imgs[${d}]}
-            if [[ "$(basename $img)" == $KC_BACKUP_EXCLUDE ]]; then
-              exclude_disks="${exclude_disks},$d"
-              echo "skipping backup of image: <$img>, because it of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
-            fi
-          done
-          if [ "${exclude_disks}" != "" ] ; then
-            exclude_disks=${exclude_disks%,}
-            exclude_disks="-x $exclude_disks"
-          fi  
-          echo "jetzt backup für Domain <$vm> durchführen..."
-          if [ "$CMD" != "simul" ] ; then
-            mkdir -p ${KC_TSP_DIR}/sync/backup/$vm
-            virtnbdbackup  -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
-            ret=$?
-            if [ "$ret" != "0" ] ; then
-              echo "error: virtnbdbackup returns <$ret>"
-              _umount
-              exit 1
-            fi
-            # store backup device name
-            echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
-          fi
-          echo "backup für Domain <$vm> ist durchgeführt"
-        fi
-    done
+      done
+      if [ "${exclude_disks}" != "" ] ; then
+        exclude_disks=${exclude_disks%,}
+        exclude_disks="-x $exclude_disks"
+      fi  
+      echo "jetzt backup für Domain <$vm> durchführen..."
+      mkdir -p ${KC_TSP_DIR}/sync/backup/$vm
+      virtnbdbackup  -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
+      ret=$?
+      if [ "$ret" != "0" ] ; then
+        echo "error: virtnbdbackup returns <$ret>"
+        _umount
+        exit 1
+      fi
+      # store backup device name
+      echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
+      echo "backup für Domain <$vm> ist durchgeführt"
+    fi
+  done
   echo "===================================================================="
   df -h  $MPOINT
   usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
@@ -318,26 +282,24 @@ if [ "$CMD" = "backup" ] ; then
   _umount
   date
   if [ "$VMB" = "" ] ; then # only for complete backup
-
-  if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
-    . ${KC_TSP_DIR}/config/kc-backup.conf
-    FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep
-    if [ ! -f ${FI} ] ; then
-      mkdir -p `dirname ${FI}`
-      touch ${FI}
+    if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
+      . ${KC_TSP_DIR}/config/kc-backup.conf
+      FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep
+      if [ ! -f ${FI} ] ; then
+        mkdir -p `dirname ${FI}`
+        touch ${FI}
+      fi
+      DAT=$(date +"%Y-%m-%d %H:%M:%S")
+      sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}] new\n/" ${FI}
+      subject="kc-backup @ `hostname`"
+      swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
+            -s   ${KC_BACKUP_SMTP} \
+            --header "Subject: $subject" \
+            --attach-type "text/plain" --attach-body @${FI} \
+            --attach-type "text/plain" --attach @${FI} \
+            -S 2
     fi
-    DAT=$(date +"%Y-%m-%d %H:%M:%S")
-    sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}] new\n/" ${FI}
-    subject="kc-backup @ `hostname`"
-    swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
-          -s   ${KC_BACKUP_SMTP} \
-          --header "Subject: $subject" \
-          --attach-type "text/plain" --attach-body @${FI} \
-          --attach-type "text/plain" --attach @${FI} \
-          -S 2
   fi
-  fi
-
 fi
 sf_end
 

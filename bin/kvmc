@@ -29,6 +29,8 @@ _help() {
     echo " * rm doamin|complete # destroy, undefine domain and assigned images"
     echo " * mig <target-node>  # live migration to target"
     echo " * sparsify           # sparsify assigned images"
+    echo " * gluster_check      # ret=0..OK, ret=1..ERR"
+
     echo "#"
     echo "# examples:"
     echo "#"
@@ -50,8 +52,7 @@ _help() {
 
 #############################
 _gluster_check() {
-  node=$1
-
+  
   FI=${KC_TSP_DIR}/config/gluster.conf
   if [ ! -e $FI ] ; then
     echo "missing gluster definition file <$FI>"
@@ -230,6 +231,7 @@ fi
 
 CMD="$1"
 shift
+
 if [ "$CMD" = "status" ] ; then
   gluster volume status cust      | sed -e "s|^|  |g"
   echo "---------------"          | sed -e "s|^|  |g"
@@ -244,13 +246,17 @@ if [ "$CMD" = "init" ] ; then
   echo TBD
   exit 0
 fi
-dom_arr=()
+
 _gluster_check
 gstate=$?
+if [ "$CMD" = "gluster_check" ] ; then
+  exit $gstate
+fi
+
+dom_arr=()
 for node in $host_list ; do
   dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\";gluster=\""'$gstate'  "\""}' `)
 done
-
 for value in ${dom_arr[@]} ; do
   domain=""; node="" ; state="" ; gluster=""
   eval $value

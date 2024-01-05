@@ -15,7 +15,7 @@ SSH_OPT=""
 _usage()
 {
   if [ "$1" = "" ] ; then
-    echo "  usage: `basename $0` mount|umount|status|simul|backup [vm]"
+    echo "  usage: `basename $0` mount|umount|simul|backup [vm]"
     exit 0
   fi
 }
@@ -61,42 +61,10 @@ _umount()
 #############################
 _status()
 {
-  FI=${KC_TSP_DIR}/config/gluster.conf
-  if [ ! -e $FI ] ; then
-    echo "error: missing gluster definition file <$FI>"
+  kvmc gluster_check
+  if [ "$?" != "0" ] ; then
     sf_set_error
     sf_end
-  fi
-  . $FI
-  if [ "$KC_GLUSTER_ACTIVE"  = "false" ] ; then
-    echo "gluster not activated in $FI, so skipping gluster check!"
-    return 0
-  fi 
-  #
-  # check gluster status
-  #
-  list=$( gluster volume heal ${KC_GLUSTER_VOLUME} info | awk '/^Status:/ {print $2}' )
-  for i in $list ; do
-    if [ "$i" != "Connected" ] ; then
-      echo "gluster status error <$i>"
-      sf_set_error
-      sf_end
-    fi
-  done
-  echo "gluster_status=Connected"
-  #
-  # check gluster is in sync
-  #
-  list=$( gluster volume heal ${GLUSTER_VOLUME} info | awk '/^Number of entries:/ {print $4}' )
-  declare -i count
-  count=0
-  for i in $list ; do count=count+${i} ; done
-  if [ "$count" != "0" ] ; then
-    echo "gluster not in sync (entries=$count)"
-    sf_set_error
-    sf_end
-  fi
-  echo "gluster_entries=0"
 }
 ################################################################################################
 # 
@@ -113,10 +81,6 @@ if [ "$CMD" = "mount" ] ; then
 fi 
 if [ "$CMD" = "umount" ] ; then
   _umount
-  exit 0
-fi
-if [ "$CMD" = "status" ] ; then
-  _status
   exit 0
 fi
 _usage $CMD

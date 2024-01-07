@@ -43,7 +43,7 @@ _help() {
     echo "# other usefull kc commands:"
     echo "#"
     echo "kc-backup <command>  # USB-HD backup/restore" 
-    echo "kc-newbackup         # USB-HD backup/restore"
+    echo "kc-rsync             # old USB-HD backup/restore"
     echo "kc-temp-disk"
     echo ""
   fi
@@ -168,8 +168,8 @@ _mig() {
     echo "error: migration target node not given!"
     return 1
   fi
-  if [ "$state" = "backup" ] ; then
-    echo "skipping backup domain <$domain>"
+  if [ "$state" = "coldstandby" ] ; then
+    echo "skipping coldstandby domain <$domain>"
     return 0
   fi
   if [ "$gluster" != "0" ] ; then
@@ -191,8 +191,8 @@ _mig() {
 ##############################################################################################
 _sparsify() {
   node=$1 ; domain=$2 ; state=$3 ; gluster=$4
-  if [ "$state" = "backup" ] ; then
-    echo "skipping backup domain <$domain>"
+  if [ "$state" = "coldstandby" ] ; then
+    echo "skipping coldstandby domain <$domain>"
     return 0
   fi
   _down $@
@@ -261,7 +261,7 @@ for value in ${dom_arr[@]} ; do
   domain=""; node="" ; state="" ; gluster=""
   eval $value
   if [[ "$domain" == "["*"]"   ]] ; then
-    state="backup"
+    state="coldstandby"
   fi
   if [[  "$opt_domain" != "" &&   "$opt_domain" != "$domain" ]] ; then
     continue

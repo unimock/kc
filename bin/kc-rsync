@@ -1,0 +1,239 @@
+#!/bin/bash
+. /opt/kc/funcs/script_funcs
+sf_start
+
+. /opt/kc/etc/config
+
+GLUSTER_VOLUME="cust"
+MPOINT=/backup
+NAME="kvm-bup"
+HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
+EXCLUDE="*_temp_disk.qcow2"
+SSH_OPT=""
+
+#############################
+_usage()
+{
+  if [ "$1" = "" ] ; then
+    echo "  usage: `basename $0` mount|umount|simul|backup [vm]"
+    exit 0
+  fi
+}
+#############################
+_mount()
+{
+  FI=${KC_TSP_DIR}/config/backup-uuids.conf
+  if [ ! -e $FI ] ; then
+    echo "error: missing uuid definition file <$FI>"
+    sf_set_error
+    sf_end
+  fi
+  if [ ! -d $MPOINT ] ; then
+    echo "create mountpoint: $MPOINT"
+    mkdir -p $MPOINT
+  fi
+  _mount=0
+  for UUID in $( cat $FI ) ; do
+    DEV=`blkid  -U $UUID`
+    ret=$?
+    if [ "$ret" = "0" ] ; then
+      cryptsetup luksOpen $DEV $NAME < ${KC_TSP_DIR}/config/backup-passwd.conf
+      mount /dev/mapper/$NAME $MPOINT
+      . $MPOINT/INFO.cfg 
+      echo "backup device: <${INFO_HD_NAME}> successfully mounted on <$MPOINT>"
+      _mount=1
+      break
+    fi
+  done
+  if [ "${_mount}" != "1" ] ; then
+    echo "no backup hd found"
+    sf_end
+  fi 
+}
+#############################
+_umount()
+{
+  . $MPOINT/INFO.cfg
+  umount $MPOINT
+  cryptsetup luksClose $NAME
+  echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
+}
+#############################
+_status()
+{
+  kvmc gluster_check
+  if [ "$?" != "0" ] ; then
+    sf_set_error
+    sf_end
+  fi
+}
+################################################################################################
+# 
+# magic main
+#
+################################################################################################
+
+CMD="$1"
+VMB="$2"
+
+if [ "$CMD" = "mount" ] ; then
+  _mount
+  exit 0
+fi 
+if [ "$CMD" = "umount" ] ; then
+  _umount
+  exit 0
+fi
+_usage $CMD
+if [ "$CMD" != "backup" -a "$CMD" != "simul" ] ; then
+  echo "unkomwn command given"
+  exit 1
+fi
+
+date
+_status
+_mount
+#
+# cleanup orphaned backup files from backup device
+#
+list=$(find /backup/ -type f -name ".*qcow2.*")
+for i in $list ; do
+  rm $i
+done
+#
+# backup rfs-changes
+#
+for host in $HOSTS ; do
+  mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
+  ssh ${SSH_OPT} -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+done
+rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/rfs-backup
+#
+# backup ISOs
+#
+if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
+  mkdir -p $MPOINT/ISOs
+  rsync -av ${KC_TSP_DIR}/ISOs/    $MPOINT/ISOs
+fi
+#
+# backup kc config
+#
+mkdir -p $MPOINT/config
+rsync -av ${KC_TSP_DIR}/config/  $MPOINT/config
+#
+# backup vms
+#
+echo "===================================================================="
+  for h in $HOSTS ; do
+    vms=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh list --all --name" )
+    for vm in $vms ; do
+        if [[ $vm == \[*:kvm[1-9]\] ]] ; then
+          continue ;
+        fi
+        state=$( ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh domstate ${vm}" )
+        _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
+        echo "####################################################"
+        echo "#  $vm @ ${h} ($state) ${_DATE}"
+        echo "####################################################"
+        # Get list of disk names and image paths
+        unset imgs ; declare -A imgs
+        disc=""
+        disc=$( ssh ${SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+        eval $( ssh ${SSH_OPT} -q ${KC_USER}@${h}  virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+        #
+        # Test if there exists already a file with extension .backup
+        #
+        for d in ${disc[@]}; do
+            img=${imgs[${d}]}
+            img=${img%.qcow2} ; img=${img%.img}
+            #echo check if $img exists
+            if [ -f ${img}.backup ] ; then
+               echo "error: ${img}.backup from VM ${vm} already exists"
+               _umount
+               sf_set_error
+               sf_end
+            fi
+        done
+        if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
+          if [ "$CMD" = "simul" ] ; then
+            echo mkdir -p $MPOINT/domains/${vm}
+            echo "ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml"
+          else
+            mkdir -p $MPOINT/domains/${vm}
+            ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh dumpxml $vm"  > $MPOINT/domains/${vm}/${vm}.xml
+          fi
+          if [ "$state" != "shut off" ] ; then
+            QPAR="--quiesce"
+            ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh domtime ${vm}" >/dev/null 2>&1
+            if [ "$?" != "0" ] ; then
+                QPAR=""
+                echo "warning: snapshot-create without quiesce!!!"
+            fi
+            if [ "$CMD" = "simul" ] ; then
+              echo ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+            else
+              ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh snapshot-create-as ${vm} backup --disk-only --atomic --no-metadata ${QPAR}" 
+            fi
+          fi
+          for d in ${disc[@]}; do
+            img=${imgs[${d}]}
+            if [[ "$(basename $img)" == $EXCLUDE ]]; then
+              echo "skipping backup of image: <$img>, because of EXCLUDE setting <$EXCLUDE>"
+            else
+              if [ "$CMD" = "simul" ] ; then
+                echo rsync -av ${img} $MPOINT/domains/${vm}/
+              else
+                echo "copy ${img} to $MPOINT/domains/${vm}/ ..."
+                rsync -av ${img} $MPOINT/domains/${vm}/   # --progress
+              fi
+            fi
+            if [ "$state" != "shut off" ] ; then
+              if [ "$CMD" = "simul" ] ; then
+                echo ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+              else
+                ssh ${SSH_OPT} -q ${KC_USER}@${h} "virsh blockcommit ${vm} ${d} --active --wait --pivot"
+
+                # check, if commit was successful
+                chk=$( ssh ${SSH_OPT} -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details" | awk "/file +disk +${d}/ {print \$4}"  )
+                if [ "${chk}" != "${img}" ] ; then
+                  echo "error: blockcommit for image: <${img}>"
+                  _umount
+                  sf_set_error
+                  sf_end
+                fi 
+                img=${img%.qcow2} ; img=${img%.img} 
+                echo "remove snapshot image: <${img}.backup>"
+                rm -f ${img}.backup
+              fi
+            fi
+          done
+          ssh ${SSH_OPT} -q ${KC_USER}@${h}  "virsh domblklist ${vm} --details"
+        fi
+    done
+  done
+echo "===================================================================="
+#find   $MPOINT -ls
+df -h  $MPOINT
+usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
+_umount
+date
+if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
+  . ${KC_TSP_DIR}/config/kc-backup.conf
+  FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep
+  if [ ! -f ${FI} ] ; then
+    mkdir -p `dirname ${FI}`
+    touch ${FI}
+  fi
+  DAT=$(date +"%Y-%m-%d %H:%M:%S")
+  sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" ${FI}
+  subject="kc-backup @ `hostname`"
+  swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
+        -s   ${KC_BACKUP_SMTP} \
+        --header "Subject: $subject" \
+        --attach-type "text/plain" --attach-body @${FI} \
+        --attach-type "text/plain" --attach @${FI} \
+        -S 2
+fi
+
+sf_end
+

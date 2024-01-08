@@ -24,7 +24,6 @@ systemctl daemon-reload
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
-
 apt-get install -y net-tools
 ```
 
@@ -33,6 +32,7 @@ apt-get install -y net-tools
 https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
 
 ```
+timedatectl set-timezone Europe/Berlin
 vi /etc/hosts
 vi /etc/hostname
 chmod 600  /etc/netplan/00-installer-config.yaml

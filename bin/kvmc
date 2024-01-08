@@ -1,6 +1,8 @@
 #!/bin/bash
 CONFIG=/opt/kc/etc/config
 
+gluster_state="0"
+
 if [ ! -f  ${CONFIG} ] ; then
   printf "initialize default kc configuration in <${CONFIG}>:"
   mkdir -p $(dirname ${CONFIG})
@@ -83,13 +85,13 @@ _gluster_check() {
 }
 ##############################################################################################
 _list() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
+  node=$1 ; domain=$2 ; state=$3
   printf "%s\n" "$domain"
   return 0
 }
 ##############################################################################################
 _ls() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
+  node=$1 ; domain=$2 ; state=$3
   if [[ "$opt_short" = "1" ]] ; then
     printf "%s\n" "$domain"
   else
@@ -102,13 +104,13 @@ _ls() {
       #  #qemu-img info -U ${img_arr[$img]}
     done
     images=${images#,}
-    printf "%-16s  %-8s  %-6s %-1s %s\n" "$domain" "$state" "$node" "$gluster" "$images"
+    printf "%-16s  %-8s  %-6s %s\n" "$domain" "$state" "$node" "$images"
   fi
   return 0
 }
 ##############################################################################################
 _down() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
+  node=$1 ; domain=$2 ; state=$3
   if [[ "$state" != "shutoff" ]] ; then
     ssh -q $node virsh shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
@@ -132,13 +134,13 @@ _down() {
 }
 ##############################################################################################
 _up() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
+  node=$1 ; domain=$2 ; state=$3
   ssh -q $node virsh start $domain >/dev/null
   return $?
 }
 ##############################################################################################
 _rm() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4 ; subcmd=$5
+  node=$1 ; domain=$2 ; state=$3 ; subcmd=$4
   if [[ "$subcmd" != "domain" && "$subcmd" != "complete" ]] ; then
     echo "error sub-command domain or complete not given!"
     return 1
@@ -163,16 +165,16 @@ _rm() {
 }
 ##############################################################################################
 _mig() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4; target=$5
+  node=$1 ; domain=$2 ; state=$3 ; target=$4
   if [ "$target" = "" ] ; then
     echo "error: migration target node not given!"
     return 1
   fi
-  if [ "$state" = "coldstandby" ] ; then
-    echo "skipping coldstandby domain <$domain>"
+  if [ "$state" = "cold-stby" ] ; then
+    echo "skipping cold-stby domain <$domain>"
     return 0
   fi
-  if [ "$gluster" != "0" ] ; then
+  if [ "$gluster_check" != "0" ] ; then
     echo "error: gluster error!"
     return 1
   fi
@@ -190,9 +192,9 @@ _mig() {
 }
 ##############################################################################################
 _sparsify() {
-  node=$1 ; domain=$2 ; state=$3 ; gluster=$4
-  if [ "$state" = "coldstandby" ] ; then
-    echo "skipping coldstandby domain <$domain>"
+  node=$1 ; domain=$2 ; state=$3
+  if [ "$state" = "cold-stby" ] ; then
+    echo "skipping cold-stby domain <$domain>"
     return 0
   fi
   _down $@
@@ -248,20 +250,20 @@ if [ "$CMD" = "init" ] ; then
 fi
 
 _gluster_check
-gstate=$?
+gluster_state=$?
 if [ "$CMD" = "gluster_check" ] ; then
-  exit $gstate
+  exit $gluster_state
 fi
 
 dom_arr=()
 for node in $host_list ; do
-  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\";gluster=\""'$gstate'  "\""}' `)
+  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 }' `)
 done
 for value in ${dom_arr[@]} ; do
-  domain=""; node="" ; state="" ; gluster=""
+  domain=""; node="" ; state=""
   eval $value
   if [[ "$domain" == "["*"]"   ]] ; then
-    state="coldstandby"
+    state="cold-stby"
   fi
   if [[  "$opt_domain" != "" &&   "$opt_domain" != "$domain" ]] ; then
     continue
@@ -270,7 +272,7 @@ for value in ${dom_arr[@]} ; do
     continue
   fi
   if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
-    _${CMD} "$node" "$domain" "$state" "$gluster" $@
+    _${CMD} "$node" "$domain" "$state" $@
   fi
 done
 exit 0 

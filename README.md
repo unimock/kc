@@ -1,8 +1,5 @@
 # kc  ... kvm controller 
  
-Problem, wenn ein Netzwerkinterface (vermutlich gluster-Network) in netplan definiert, jedoch nicht gesteckt ist (down):
-https://stanislas.blog/2018/10/how-to-mount-local-glusterfs-volume-boot-fstab-systemd-fix/
-
 ## Description
 
 kc environment contains a couple of bash scripts to install and manage kvm  
@@ -75,7 +72,6 @@ echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
 mount -a
 df -h
 gluster pool list
-#
 gluster peer probe gfs2
 gluster pool list
 mkdir /tsp0
@@ -84,13 +80,17 @@ gluster volume create cust replica 2 gfs3://srv/.bricks/cust gfs2://srv/.bricks/
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
 #
-gluster volume heal  cust info
-gluster volume start cust
+gluster volume heal   cust info
+gluster volume start  cust
 gluster volume status
-gluster volume info cust
-vi /etc/fstab
-# localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
-# #localhost:cust /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0
+gluster volume info   cust
+#
+# modify /etc/fstab
+#
+cat /etc/fstab
+# #localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
+echo '# see https://wiki.archlinux.org/title/Glusterfs' >> /etc/fstab
+echo 'localhost:cust /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0' >> /etc/fstab
 mount -a
 ```
 
@@ -180,20 +180,6 @@ virtnbdbackup  -d $DOMAIN -l auto -o /test-backup
 rm -rvf /test-backup
 ```
 
-### virtcpt (manage checkpoints)
-
-https://github.com/abbbi/vircpt.git
-
-```
-apt-get install -y python3-rich
-git clone https://github.com/abbbi/vircpt.git /opt/vircpt
-cd /opt/vircpt
-python3 setup.py install
-DOM=test
-vircpt -d ${DOM} list
-```
-
-
 ### install netdata
 
 https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04
@@ -214,27 +200,10 @@ ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
 cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
 echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
 echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
-# scp /root/.ssh/* root@kvm2:/root/.ssh
+# scp /root/.ssh/* root@gfs2:/root/.ssh
 sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
 systemctl restart sshd
 
-```
-
-### utils and kc environment
-
-```
-apt-get install -y tree swaks
-git clone https://github.com/unimock/kc.git /opt/kc
-/opt/kc/bin/kc-install init     # initialize kc environment
-. /etc/profile                  # or re-login
-
-mkdir -p /tsp0/config/
-echo -e "kvm8\nkvm9" >  /tsp0/config/hosts.conf
-vi /tsp0/config/backup-uuids.conf
-vi /tsp0/config/backup-passwd.conf
-vi /tsp0/config/gluster.conf
-vi /tsp0/config/kc-backup.conf
-mkdir -p /tsp0/ISOs
 ```
 
 # gluster administration examples
@@ -271,54 +240,12 @@ rm /tsp0/tescht*
 # TODO
 
 
-
-### bonds and bridges 
-```
- # https://www.cyberciti.biz/faq/ubuntu-linux-bridging-and-bonding-setup/
- # (/etc/network/interfaces)
- brctl show
- cat /proc/net/bonding/bond0
- kc-status bond
-```
-### install glusterfs
-```
- # https://support.rackspace.com/how-to/set-up-a-two-server-glusterfs-array/
- # https://github.com/gluster/glusterfs-specs/blob/master/done/GlusterFS%203.5/Virt%20store%20usecase.md
- # http://www.admin-magazine.com/Articles/Build-storage-pools-with-GlusterFS/(offset)/3
-
- # resolve qemu port conflict:
- vi /etc/glusterfs/glusterd.vol
- echo "10.10.10.1      gfs1" >> /etc/hosts
- echo "10.10.10.2      gfs2" >> /etc/hosts
-
- lsblk
- vgcreate data  /dev/sdb
- #lvcreate -n tsp0 -L 1T data
- lvcreate -n tsp0 -l100%FREE data
- umount /dev/data/tsp0
- mkfs.xfs /dev/data/tsp0
- mkdir -p /srv/.bricks
- echo "/dev/data/tsp0 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
- mount /srv/.bricks
- gluster peer probe gfs1
- gluster peer probe gfs2
-
- GLUSTER_VOL="cust"
- gluster volume create ${GLUSTER_VOL} replica 2 gfs1://srv/.bricks/${GLUSTER_VOL} gfs2://srv/.bricks/${GLUSTER_VOL}
- gluster volume start  ${GLUSTER_VOL}
- gluster volume info
-
- echo "localhost:${GLUSTER_VOL} /tsp0  glusterfs log-file=/var/log/mirror.vol,defaults,_netdev,noauto,x-systemd.automount 0 0" >> /etc/fstab
- mount -a
-```
-
-
 ## Administration
 
 ### glusterd
 
 ```
- kc-status gluster
+ kcvmc status
 
  glusterd -V
  gluster volume status
@@ -337,26 +264,22 @@ rm /tsp0/tescht*
 ### dist-upgrade
 
 ```
- # @kvm1: (non productive)
+ # @gfs2: (cold-standhy)
+ kvmc status
+ kvmc ls
  apt-get update ; apt-get autoremove ; apt-get dist-upgrade
  init 6
- kc-status bond
- kc-status gluster
- # change the productive node. migrate VMs from kvm2 to kvm1
- kc-tool mig kvm2 kvm1
+ # change the productive node. migrate VMs from gfs1 to gfs2
+ kvmc --node=gfs1 mig gfs2
 ```
 
-## kc utilities
+## kvmc util examples
 
 ```
- kc-tool ls                # list VMs
- kc-tool mig kvm1 kvm2     # migrate VMs from kvm1 to kvm2 
- 
- kc-status gluster         # display gluster status
- #kc-status bond            # display bond status
-
- kc-syncxml complete       # sync VMs definition files between hosts
-
+ kvmc ls                   # list VMs
+ kvmc --node=gfs1 mig gfs2 # migrate VMs from gfs1 to gfs2 
+ kvmc status               # show gluster status
+ kvmc syncxml              # sync VMs definition files between hosts
 ```
 
 ## virsh
@@ -368,9 +291,10 @@ rm /tsp0/tescht*
  virsh domtime  <domain>
 ```
 
-## vm stuff
+## domain stuff stuff
 ```
  apt-get install -y qemu-guest-agent
+ # todo: disable cloud-init
 ```
 
 
@@ -470,12 +394,11 @@ gluster volume heal   cust info
 
 ### testing
 ```
-#kc-status gluster
+kvmc ls
+kvmc status
+gluster pool list
 gluster volume status cust
 gluster volume info   cust
 gluster volume heal   cust info
 ```
-
-## Hints
-* Migration zwischen verschiedenen Host-CPUs: guest-cpu wie Ziel cpu einstellen
 

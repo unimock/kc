@@ -18,12 +18,12 @@ _usage()
     echo ""
     echo "usage:"
     echo ""
-    echo "`basename $0` mount|umount"
-    echo ""
-    echo "`basename $0` backup [<domain>]"
-    echo "`basename $0` restore <domain>"
-    echo "`basename $0` delete <domain> # delete domain backup from backup device"
-    echo "`basename $0` info <domain>   # virtnbdbackup debug infos"
+    echo "`basename $0` mount             # mount backup device"
+    echo "`basename $0` umount            # un-mount backup device"
+    echo "`basename $0` backup [<domain>] # do backup"
+    echo "`basename $0` restore <domain>  # restore domain from backup device"
+    echo "`basename $0` delete <domain>   # delete domain backup from backup device"
+    echo "`basename $0` info <domain>     # virtnbdbackup debug infos"
     echo ""
     exit 0
   fi
@@ -83,18 +83,28 @@ _info()
     echo $dev : ${imgs[$dev]}
     qemu-img info -U ${imgs[$dev]}
   done
-
   printf "#\n# libvirt chackpoint infos in /var/lib/libvirt/qemu/checkpoint/$DOM/:\n#\n"
   ls -la /var/lib/libvirt/qemu/checkpoint/$DOM/
-
   printf "#\n# virtnbdbackup checkpoint infos in /tsp0/sync/backup/$DOM/:\n#\n"
   ls -la /tsp0/sync/backup/$DOM/
-
-  printf "#\n# libvirt chackpoint infos:\n#\n"
-  vircpt -d $DOM list
-
   printf "#\n# virsh checkpoint-list for $DOM:\n#\n"
   virsh checkpoint-list $DOM
+  printf "#\n# repairing commands:\n#\n"
+  echo " you can remove checkpoints from a domain with:"
+  echo "   if bitmaps are in images:"
+  echo "      > virsh checkpoint-delete $DOM --checkpointname virtnbdbackup.0"
+  echo "   if bitmaps are not in images:"
+  echo "      > virsh checkpoint-delete $DOM --checkpointname virtnbdbackup.0  --metadata"
+  echo " if a backup was aborted, check:"
+  echo "   > virsh domjobinfo $DOM"
+  echo "   if job exists, you can abort it with:"
+  echo "     > virsh domjobabort $DOM"
+  echo " to remove bitmaps from an imge, call:"
+  echo "   > qemu-img info /tsp0/images/wws_0.qcow2"
+  echo "   > qemu-img bitmap  /tsp0/images/wws_0.qcow2 --remove virtnbdbackup.1"
+  echo "   > qemu-img bitmap  /tsp0/images/wws_0.qcow2 --remove virtnbdbackup.0"
+  echo "   > qemu-img info /tsp0/images/wws_0.qcow2"
+  echo ""
 }
 #############################
 _status()
@@ -113,7 +123,6 @@ _status()
 
 CMD="$1"
 VMB="$2"
-
 
 if [ "$CMD" = "mount" ] ; then
   _mount
@@ -290,7 +299,7 @@ if [ "$CMD" = "backup" ] ; then
         touch ${FI}
       fi
       DAT=$(date +"%Y-%m-%d %H:%M:%S")
-      sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}] new\n/" ${FI}
+      sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" ${FI}
       subject="kc-backup @ `hostname`"
       swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
             -s   ${KC_BACKUP_SMTP} \

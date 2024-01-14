@@ -1,6 +1,5 @@
 #!/bin/bash
 CONFIG=/opt/kc/etc/config
-
 gluster_state="0"
 
 if [ ! -f  ${CONFIG} ] ; then
@@ -32,12 +31,13 @@ _help() {
     echo " * mig <target-node>  # live migration to target"
     echo " * sparsify           # sparsify assigned images"
     echo " * gluster_check      # ret=0..OK, ret=1..ERR"
+    echo " * syncxml            # syncxml on all hosts"
 
     echo "#"
     echo "# examples:"
     echo "#"
-    echo "$IAM --node=kvm2   mig kvm1 # migration all domains from kvm2 to kvm1"
-    echo "$IAM --domain=test mig kvm2 # migration domain test to kvm2"
+    echo "$IAM --node=gfs2   mig gfs1 # migration all domains from gfs2 to gfs1"
+    echo "$IAM --domain=test mig gfs2 # migration domain test to gfs2"
 
     echo ""
 
@@ -50,11 +50,32 @@ _help() {
     echo ""
   fi
 }
-
-
+#############################
+_virsh() {
+  _node="$1"
+  shift
+  virsh -c qemu+ssh://root@${_node}/system $@
+  return $?
+}
+#############################
+_ssh() {
+  _node="$1"
+  shift
+  ssh -q root@${_node} $@
+}
+#############################
+_copyxml() {
+  node="$1" ; domain="$2" ; target_node="$3" ; target_domain="$4"
+  FI=$( mktemp )
+  _virsh ${node} dumpxml $domain            > $FI
+  sed -i "s|<name>${domain}</name>|<name>${target_domain}</name>|g"    $FI
+  sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
+  # keep mac address  sed -i '/mac address/d' $FI
+  _virsh ${target_node} define $FI
+  rm $FI
+}
 #############################
 _gluster_check() {
-  
   FI=${KC_TSP_DIR}/config/gluster.conf
   if [ ! -e $FI ] ; then
     echo "missing gluster definition file <$FI>"
@@ -96,12 +117,11 @@ _ls() {
     printf "%s\n" "$domain"
   else
     unset img_arr ; declare -A img_arr
-    eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     images=""
     for img in ${!img_arr[@]}; do
       images="$images,$img:${img_arr[$img]}"
-      #echo "         $img:${img_arr[$img]}"
-      #  #qemu-img info -U ${img_arr[$img]}
+      #qemu-img info -U ${img_arr[$img]}
     done
     images=${images#,}
     printf "%-16s  %-8s  %-6s %s\n" "$domain" "$state" "$node" "$images"
@@ -112,13 +132,13 @@ _ls() {
 _down() {
   node=$1 ; domain=$2 ; state=$3
   if [[ "$state" != "shutoff" ]] ; then
-    ssh -q $node virsh shutdown ${domain} >/dev/null
+    _virsh $node shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
     i=0
     while true ; do
       i=$(( i + 1 ))
       sleep 1
-      s=$( ssh -q $node virsh domstate ${domain} )
+      s=$( _virsh $node domstate ${domain} )
       printf "."
       if [[ "$s" == "shut off" ]] ; then
         break ;
@@ -135,7 +155,7 @@ _down() {
 ##############################################################################################
 _up() {
   node=$1 ; domain=$2 ; state=$3
-  ssh -q $node virsh start $domain >/dev/null
+  _virsh $node start $domain >/dev/null
   return $?
 }
 ##############################################################################################
@@ -145,22 +165,22 @@ _rm() {
     echo "error sub-command domain or complete not given!"
     return 1
   fi
-  if [[ "$state" != "shutoff" ]] ; then
-    ssh -q $node virsh destroy  $domain
+  if [[ "$state" != "shutoff" && "$state" != "coldstby" ]] ; then
+    _virsh $node destroy  $domain   # 
   fi
   if [[ "$subcmd" == "complete" ]] ; then
     unset img_arr ; declare -A img_arr
-    eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     for img in ${!img_arr[@]}; do
       KC_BACKUP_EXCLUDE="*_temp_disk.qcow2"
       if [[ "$(basename ${img_arr[$img]})" == $KC_BACKUP_EXCLUDE ]]; then
         echo "skipping deletion of image: <${img_arr[$img]}>, because of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
         continue
       fi
-      ssh -q $node rm -f ${img_arr[$img]}
+      _ssh $node rm -f ${img_arr[$img]}
     done
   fi
-  ssh -q $node virsh undefine $domain --checkpoints-metadata --snapshots-metadata #--remove-all-storage
+  _virsh $node undefine $domain --checkpoints-metadata --snapshots-metadata # --remove-all-storage
   return $?
 }
 ##############################################################################################
@@ -170,41 +190,146 @@ _mig() {
     echo "error: migration target node not given!"
     return 1
   fi
-  if [ "$state" = "cold-stby" ] ; then
-    echo "skipping cold-stby domain <$domain>"
+  if [ "$state" = "coldstby" ] ; then
+    echo "skipping coldstby domain <$domain>"
     return 0
   fi
-  if [ "$gluster_check" != "0" ] ; then
+  if [ "$gluster_state" != "0" ] ; then
     echo "error: gluster error!"
     return 1
   fi
-  ssh -q $target virsh undefine "[${domain}:${target}]" 2>/dev/null
-  ssh -q $node "virsh dumpxml $domain > /tmp/dump.xml"
-  ssh -q $node "sed -i \"s|<name>${domain}</name>|<name>[${domain}:${node}]</name>|g\" /tmp/dump.xml"
-  # hardware addresses need to be removed, libvirt will assign new addresses automatically
-  ssh -q $node sed -i /uuid/d /tmp/dump.xml
-  #keep mac address  sed -i '/mac address/d' /tmp/dump.xml
-  ssh -q $node   virsh migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
-  ssh -q $target virsh autostart $domain
-  ssh -q $node   virsh define /tmp/dump.xml
+  _virsh $target undefine "[${domain}:${target}]" 2>/dev/null
+  _virsh $node   migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
+  _copyxml  "${target}" "${domain}" "${node}" "[${domain}:${node}]"
+  _virsh $target autostart $domain
   #chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/*
   return 0
 }
 ##############################################################################################
 _sparsify() {
   node=$1 ; domain=$2 ; state=$3
-  if [ "$state" = "cold-stby" ] ; then
-    echo "skipping cold-stby domain <$domain>"
+  if [ "$state" = "coldstby" ] ; then
+    echo "skipping coldstby domain <$domain>"
     return 0
   fi
   _down $@
   unset img_arr ; declare -A img_arr
-  eval $( ssh -q $node virsh domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+  eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
   for img in ${!img_arr[@]}; do
-    ssh -q $node virt-sparsify --in-place ${img_arr[$img]}
+    _ssh $node virt-sparsify --in-place ${img_arr[$img]}
   done
   _up $@
   return 0
+}
+##############################################################################################
+_syncxml() {
+  for node in $host_list ; do # delete coldstby domains
+    dom_arr=()    
+    dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+    for value in ${dom_arr[@]} ; do
+      domain=""; node="" ; state=""
+      eval $value
+      if [[ "$domain" == "["*"]"   ]] ; then
+        kvmc --node=$node --domain=$domain rm domain
+      fi
+    done
+  done
+  for node in $host_list ; do  # sync non coldstby domains between nodes
+  dom_arr=()
+    dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+    for value in ${dom_arr[@]} ; do
+      domain=""; node="" ; state=""
+      eval $value
+      if [[ "$domain" != "["*"]"   ]] ; then
+        for target_node in $host_list ; do
+          if [[ "$node" == "$target_node" ]] ; then
+            continue
+          fi
+          _copyxml "${node}" "${domain}" "${target_node}" "[${domain}:${target_node}]"
+        done
+      fi
+    done
+  done
+  return 0
+}
+##############################################################################################
+_backup() {
+  MPOINT=/backup
+  NAME="kvm-bup"
+  node=$1 ; domain=$2 ; state=$3
+  shift 3
+  cmd=$1
+  #
+  # mount backup device
+  #
+  if [[ "$cmd" == "mount" || "$cmd" == "show" || "$cmd" == "delete" ]] ; then
+    FI=${KC_TSP_DIR}/config/backup-uuids.conf
+    if [ ! -e $FI ] ; then
+      echo "error: missing uuid definition file <$FI>"
+      return 1
+    fi
+    if [ ! -d $MPOINT ] ; then
+      echo "create mountpoint: $MPOINT"
+      mkdir -p $MPOINT
+    fi
+    _mount=0
+    for UUID in $( cat $FI ) ; do
+      DEV=`blkid  -U $UUID`
+      ret=$?
+      if [ "$ret" = "0" ] ; then
+        mkdir -p /var/kc
+        echo "$DEV" > /var/kc/device
+        cryptsetup luksOpen $DEV $NAME < ${KC_TSP_DIR}/config/backup-passwd.conf
+        mount /dev/mapper/$NAME $MPOINT
+        . $MPOINT/INFO.cfg 
+        echo "backup device: <${INFO_HD_NAME}> successfully mounted on <$MPOINT>"
+        _mount=1
+        break
+      fi
+    done
+    if [ "${_mount}" != "1" ] ; then
+      echo "no backup hd found"
+      return 1
+    fi
+  fi
+  #
+  if [[ "$cmd" == "backup" ]] ; then   
+    if [[ "$state" == "coldstby" ]] ; then
+      return 0
+    fi
+    echo "TBD: backup $cmd node=$node ; domain=$domain ; state=$state"
+  fi
+  #
+  if [[ "$cmd" == "restore" ]] ; then
+    echo "TBD: backup $cmd node=$node ; domain=$domain ; state=$state"
+  fi
+  #
+  if [[ "$cmd" == "virtinfo" ]] ; then
+    if [[ "$state" == "coldstby" ]] ; then
+      return 0
+    fi
+    echo "TBD: backup $cmd node=$node ; domain=$domain ; state=$state"
+  fi
+  #
+ if [[ "$cmd" == "delete" ]] ; then 
+    echo "TBD: backup $cmd node=$node ; domain=$domain ; state=$state"
+  fi
+  #
+  if [[ "$cmd" == "show" ]] ; then
+    tree $MPOINT
+  fi
+  #
+  # un-mount backup device
+  #
+  if [[ "$cmd" == "umount" || "$cmd" == "show"  || "$cmd" == "delete" ]] ; then
+    . $MPOINT/INFO.cfg
+    umount $MPOINT
+    cryptsetup luksClose $NAME
+    echo "backup device: <${INFO_HD_NAME}> successfully unmounted from <$MPOINT>"
+    if [ -f /var/kc/device  ] ; then
+      hdparm -y  $(cat /var/kc/device) 2>/dev/null # spin-off disk
+    fi
+  fi
 }
 ##############################################################################################
 # magic main
@@ -244,37 +369,49 @@ if [ "$CMD" = "status" ] ; then
   echo ""
   exit 0
 fi
-if [ "$CMD" = "init" ] ; then
-  echo TBD
-  exit 0
+if [ "$CMD" = "syncxml" ] ; then
+  _syncxml
+  exit $?
 fi
-
+if [[ "$CMD" == "backup" ]] ; then
+  if [[ "$1" == "mount" || "$1" == "umount" || "$1" == "show"  || "$1" == "delete" ]] ; then
+    _backup "" "" "" $@
+    exit $?
+  fi
+  if [[ "$1" == "backup" || "$1" == "restore" || "$1" == "virtinfo"  ]] ; then
+    _backup "" "" "" mount
+  fi
+fi
 _gluster_check
 gluster_state=$?
 if [ "$CMD" = "gluster_check" ] ; then
   exit $gluster_state
 fi
 
-dom_arr=()
 for node in $host_list ; do
-  dom_arr+=( `ssh -q $node virsh list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
-done
-for value in ${dom_arr[@]} ; do
-  domain=""; node="" ; state=""
-  eval $value
-  if [[ "$domain" == "["*"]"   ]] ; then
-    state="cold-stby"
-  fi
-  if [[  "$opt_domain" != "" &&   "$opt_domain" != "$domain" ]] ; then
-    continue
-  fi
   if [[  "$opt_node" != "" &&   "$opt_node" != "$node" ]] ; then
     continue
   fi
-  if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
-    _${CMD} "$node" "$domain" "$state" $@
-  fi
+  dom_arr=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+  for value in ${dom_arr[@]} ; do
+    domain=""; node="" ; state=""
+    eval $value
+    if [[ "$domain" == "["*"]"   ]] ; then
+      state="coldstby"
+    fi
+    if [[  "$opt_domain" != "" && "$opt_domain" != "$domain" ]] ; then
+      continue
+    fi
+    if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
+      _${CMD} "$node" "$domain" "$state" $@
+    fi
+  done
 done
+
+if [[ "$1" == "backup" || "$1" == "restore" || "$1" == "virtinfo" ]] ; then
+  _backup "" "" "" umount
+fi
+
 exit 0 
 
 

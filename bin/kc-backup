@@ -106,15 +106,6 @@ _info()
   echo "   > qemu-img info /tsp0/images/wws_0.qcow2"
   echo ""
 }
-#############################
-_status()
-{
-  kvmc gluster_check
-  if [ "$?" != "0" ] ; then
-    sf_set_error
-    sf_end
-  fi
-}
 ################################################################################################
 # 
 # magic main
@@ -152,7 +143,6 @@ if [ "$CMD" = "restore" -a "$VMB" = "" ] ; then
 fi
 
 date
-_status
 _mount
 
 if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then

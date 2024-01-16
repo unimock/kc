@@ -105,6 +105,9 @@ _info()
   echo "   > qemu-img bitmap  /tsp0/images/wws_0.qcow2 --remove virtnbdbackup.0"
   echo "   > qemu-img info /tsp0/images/wws_0.qcow2"
   echo ""
+  echo "assigned images:"
+  printf "#\n# assigned images:\n#\n"
+  kvmc --domain=$DOM list images
 }
 ################################################################################################
 # 

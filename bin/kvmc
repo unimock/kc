@@ -24,7 +24,7 @@ _help() {
     echo "#"
     echo " * status             # show gluster status"
     echo " * ls                 # human readable list"
-    echo " * list               # list domains only (scripting output)"
+    echo " * list [images]      # list domains only (scripting output)"
     echo " * up                 # shutoff domain and wait until is down"
     echo " * down               # start domain"
     echo " * rm doamin|complete # destroy, undefine domain and assigned images"
@@ -106,8 +106,17 @@ _gluster_check() {
 }
 ##############################################################################################
 _list() {
-  node=$1 ; domain=$2 ; state=$3
-  printf "%s\n" "$domain"
+  node=$1 ; domain=$2 ; state=$3 ; subcmd=$4
+  if [ "$subcmd" = "" ] ; then
+    printf "%s\n" "$domain"
+  else
+    unset img_arr ; declare -A img_arr
+    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    for img in ${!img_arr[@]}; do
+      #qemu-img info -U ${img_arr[$img]}
+      printf "%s\n" "${img_arr[$img]}"
+    done
+  fi
   return 0
 }
 ##############################################################################################

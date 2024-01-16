@@ -107,7 +107,11 @@ _info()
   echo ""
   echo "assigned images:"
   printf "#\n# assigned images:\n#\n"
-  kvmc --domain=$DOM list images
+  img_list=$(kvmc --domain=$DOM list images)
+  for i in $img_list ; do
+    echo "image: $i :"
+    qemu-img info -U $i  | grep " name: virtnbdbackup"
+  done
 }
 ################################################################################################
 # 

@@ -299,6 +299,32 @@ rm /tsp0/tescht*
 
 
 ## Backup
+
+### TBD: delete all virtnbdbackup data and remove virtnbdbackup bitmaps from images
+
+```
+DOM="vw"
+kc-backup info ${DOM}
+# shutdown domain
+kvmc --domain=${DOM} down
+# delete all virtnbdbackup data and remove virtnbdbackup bitmaps from images
+rm -rvf /tsp0/sync/backup/${DOM}.conf /tsp0/sync/backup/${DOM}
+images=$(kvmc --domain=${DOM} list images)
+for i in $images ; do
+  echo "doing image: $i"
+  bitmaps=$(qemu-img info $i | grep " name: virtnbdbackup" | awk -F: '{ print $2}')
+  for b in $bitmaps ; do
+    echo "remove bitmap: $b"
+    qemu-img bitmap  $i --remove $b
+  done
+  qemu-img info $i
+done
+# start domain
+kvmc --domain=${DOM} up
+# start full backup
+kc-backup backup ${DOM}
+```
+
 ### Initialize a backup device
 ```
   NAME="kvm-bup"

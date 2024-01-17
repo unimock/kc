@@ -36,8 +36,8 @@ _help() {
     echo "#"
     echo "# examples:"
     echo "#"
-    echo "$IAM --node=gfs2   mig gfs1 # migration all domains from gfs2 to gfs1"
-    echo "$IAM --domain=test mig gfs2 # migration domain test to gfs2"
+    echo "$IAM --node=node2   mig node1 # migration all domains from node2 to node1"
+    echo "$IAM --domain=test mig node2 # migration domain test to node2"
 
     echo ""
 

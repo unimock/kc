@@ -55,7 +55,7 @@ alias ipr='ip -br -c r'
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
-vi /etc/hosts # "10.10.10.1 gfs1 10.10.10.2 gfs2 10.10.10.3 gfs3"
+vi /etc/hosts # "10.10.10.1 node1 10.10.10.2 node2 10.10.10.3 node3"
 vi /etc/netplan/00-installer-config.yaml
 netplan apply
 
@@ -72,25 +72,25 @@ echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
 mount -a
 df -h
 gluster pool list
-gluster peer probe gfs2
+gluster peer probe node2
 gluster pool list
 mkdir /tsp0
-gluster volume create cust replica 2 gfs3://srv/.bricks/cust gfs2://srv/.bricks/cust
+gluster volume create gv0 replica 2 node3://srv/.bricks/gv0 node2://srv/.bricks/gv0
 #
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
 #
-gluster volume heal   cust info
-gluster volume start  cust
+gluster volume heal   gv0 info
+gluster volume start  gv0
 gluster volume status
-gluster volume info   cust
+gluster volume info   gv0
 #
 # modify /etc/fstab
 #
 cat /etc/fstab
-# #localhost:cust /tsp0 glusterfs defaults,_netdev 0 0
+# #localhost:gv0 /tsp0 glusterfs defaults,_netdev 0 0
 echo '# see https://wiki.archlinux.org/title/Glusterfs' >> /etc/fstab
-echo 'localhost:cust /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0' >> /etc/fstab
+echo 'localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0' >> /etc/fstab
 mount -a
 ```
 
@@ -200,7 +200,7 @@ ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
 cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
 echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
 echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
-# scp /root/.ssh/* root@gfs2:/root/.ssh
+# scp /root/.ssh/* root@node2:/root/.ssh
 sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
 systemctl restart sshd
 
@@ -213,26 +213,26 @@ rm /tsp0/tescht*
 
 gluster peer status
 gluster volume status
-gluster volume remove-brick cust replica 1 gfs2:/srv/.bricks/cust force
+gluster volume remove-brick gv0 replica 1 node2:/srv/.bricks/gv0 force
 gluster volume status
 touch /tsp0/tescht1
-#ssh gfs2 rm -Rvf /srv/.bricks/cust
-ssh gfs2 lsof /tsp0
-#ssh gfs2 systemctl stop libvirtd
-ssh gfs2 umount /tsp0
-ssh gfs2 umount /srv/.bricks
-ssh gfs2 mkfs.xfs -f /dev/sdb1
-ssh gfs2 mount /srv/.bricks
-ssh gfs2 mount /tsp0
+#ssh node2 rm -Rvf /srv/.bricks/gv0
+ssh node2 lsof /tsp0
+#ssh node2 systemctl stop libvirtd
+ssh node2 umount /tsp0
+ssh node2 umount /srv/.bricks
+ssh node2 mkfs.xfs -f /dev/sdb1
+ssh node2 mount /srv/.bricks
+ssh node2 mount /tsp0
 
-gluster volume add-brick cust replica 2 gfs2:/srv/.bricks/cust
+gluster volume add-brick gv0 replica 2 node2:/srv/.bricks/gv0
 gluster volume status
-ssh gfs2 ls -la /tsp0/tescht1
+ssh node2 ls -la /tsp0/tescht1
 
-ssh gfs2 systemctl stop glusterd
+ssh node2 systemctl stop glusterd
 touch /tsp0/tescht2
-ssh gfs2 systemctl start glusterd
-ssh gfs2 ls -la /tsp0/tescht2
+ssh node2 systemctl start glusterd
+ssh node2 ls -la /tsp0/tescht2
 rm /tsp0/tescht*
 
 ```
@@ -250,8 +250,8 @@ rm /tsp0/tescht*
  glusterd -V
  gluster volume status
  gluster volume info
- gluster peer probe gfs2
- gluster peer probe gfs1
+ gluster peer probe node2
+ gluster peer probe node1
  gluster peer status
 
  tail -f /var/log/glusterfs/glusterd.log
@@ -264,20 +264,20 @@ rm /tsp0/tescht*
 ### dist-upgrade
 
 ```
- # @gfs2: (cold-standhy)
+ # @node2: (cold-standhy)
  kvmc status
  kvmc ls
  apt-get update ; apt-get autoremove ; apt-get dist-upgrade
  init 6
- # change the productive node. migrate VMs from gfs1 to gfs2
- kvmc --node=gfs1 mig gfs2
+ # change the productive node. migrate VMs from node1 to node2
+ kvmc --node=node1 mig node2
 ```
 
 ## kvmc util examples
 
 ```
  kvmc ls                   # list VMs
- kvmc --node=gfs1 mig gfs2 # migrate VMs from gfs1 to gfs2 
+ kvmc --node=node1 mig node2 # migrate VMs from node1 to node2 
  kvmc status               # show gluster status
  kvmc syncxml              # sync VMs definition files between hosts
 ```
@@ -368,25 +368,25 @@ kc-backup backup ${DOM}
 ```
 
 ## gluster administration
-### remove brick of an existing replicated volume (cust)
+### remove brick of an existing replicated volume (gv0)
 
 [https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/](URL)
 
 ```
 # SSH into the glusterfs machine you wish to keep and do:
-# @kvm1 (gfs1):
+# @kvm1 (node1):
 gluster peer status
 gluster volume info
-GFS=gfs9
-gluster volume remove-brick cust replica 1 ${GFS}:/srv/.bricks/cust force
-gluster volume info cust
-gluster peer detach ${GFS}
+node=node9
+gluster volume remove-brick gv0 replica 1 ${node}:/srv/.bricks/gv0 force
+gluster volume info gv0
+gluster peer detach ${node}
 gluster peer status
 ```
 
 ### re-create brick **kvm2**
 ```
-# @kvm2 (gfs2):
+# @kvm2 (node2):
 systemctl stop libvirtd
 umount /tsp0
 systemctl stop glusterd
@@ -399,23 +399,23 @@ systemctl start glusterd
 # add-brick on the active host; then:
 #
 mount /tsp0
-gluster volume status cust
-gluster volume info   cust
-gluster volume heal   cust info
+gluster volume status gv0
+gluster volume info   gv0
+gluster volume heal   gv0 info
 systemctl start libvirtd
 ```
 
-### add brick to an existing replicated volume (cust)
+### add brick to an existing replicated volume (gv0)
 ```
-# @kvm1 (gfs1):
-GFS=gfs9
-gluster peer probe ${GFS}
+# @kvm1 (node1):
+node=node9
+gluster peer probe ${node}
 gluster peer status
 gluster volume status
-gluster volume add-brick cust replica 2 ${GFS}:/srv/.bricks/cust
+gluster volume add-brick gv0 replica 2 ${node}:/srv/.bricks/gv0
 gluster volume status
-gluster volume info   cust
-gluster volume heal   cust info
+gluster volume info   gv0
+gluster volume heal   gv0 info
 ```
 
 ### testing
@@ -423,8 +423,8 @@ gluster volume heal   cust info
 kvmc ls
 kvmc status
 gluster pool list
-gluster volume status cust
-gluster volume info   cust
-gluster volume heal   cust info
+gluster volume status gv0
+gluster volume info   gv0
+gluster volume heal   gv0 info
 ```
 

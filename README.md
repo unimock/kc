@@ -1,3 +1,31 @@
+# todo
+
+### resolve split-brain
+
+```
+# Here, <HOSTNAME:BRICKNAME> is selected as source brick and <FILE> present in the source brick is taken as the source for healing.
+# gluster volume heal <VOLNAME> split-brain source-brick <HOSTNAME:BRICKNAME>   <FILE>
+  gluster volume heal   gv0     split-brain source-brick node2:/srv/.bricks/gv0 /images/ubuntu-test.qcow2
+```
+
+```
+# with following mount option in /etc/fstab, only unsafe migration is possible: 
+localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0
+
+# so dirty hack:
+vi /etc/fstab
+  localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0
+
+vi /usr/lib/systemd/system/libvirtd.service
+  After=glusterd.service
+  ExecStartPre=mount /tsp0
+  #ExecStartPre=mount -t glusterfs localhost:gv0 /tsp0
+
+systemctl daemon-reload
+
+```
+
+
 # kc  ... kvm controller 
  
 ## Description

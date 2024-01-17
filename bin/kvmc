@@ -369,11 +369,17 @@ CMD="$1"
 shift
 
 if [ "$CMD" = "status" ] ; then
-  gluster volume status cust      | sed -e "s|^|  |g"
+  FI=${KC_TSP_DIR}/config/gluster.conf
+  if [ ! -e $FI ] ; then
+    echo "missing gluster definition file <$FI>"
+    return 1
+  fi
+  . $FI
+  gluster volume status ${KC_GLUSTER_VOLUME}      | sed -e "s|^|  |g"
   echo "---------------"          | sed -e "s|^|  |g"
-  gluster volume info   cust      | sed -e "s|^|  |g"
+  gluster volume info   ${KC_GLUSTER_VOLUME}      | sed -e "s|^|  |g"
   echo "---------------"          | sed -e "s|^|  |g"
-  gluster volume heal   cust info | sed -e "s|^|  |g"
+  gluster volume heal   ${KC_GLUSTER_VOLUME} info | sed -e "s|^|  |g"
   echo "---------------"          | sed -e "s|^|  |g"
   echo ""
   exit 0

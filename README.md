@@ -1,30 +1,3 @@
-# todo
-
-### resolve split-brain
-
-```
-# Here, <HOSTNAME:BRICKNAME> is selected as source brick and <FILE> present in the source brick is taken as the source for healing.
-# gluster volume heal <VOLNAME> split-brain source-brick <HOSTNAME:BRICKNAME>   <FILE>
-  gluster volume heal   gv0     split-brain source-brick node2:/srv/.bricks/gv0 /images/ubuntu-test.qcow2
-```
-
-```
-# with following mount option in /etc/fstab, only unsafe migration is possible: 
-localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0
-
-# so dirty hack:
-vi /etc/fstab
-  localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0
-
-vi /usr/lib/systemd/system/libvirtd.service
-  After=glusterd.service
-  ExecStartPre=mount /tsp0
-  #ExecStartPre=mount -t glusterfs localhost:gv0 /tsp0
-
-systemctl daemon-reload
-
-```
-
 
 # kc  ... kvm controller 
  
@@ -69,7 +42,7 @@ brctl show
 vi /root/.ssh/authorized_keys
 ```
 
-### disable cloud-init
+### useful aliases
 
 ```
 #touch /etc/cloud/cloud-init
@@ -103,7 +76,7 @@ gluster pool list
 gluster peer probe node2
 gluster pool list
 mkdir /tsp0
-gluster volume create gv0 replica 2 node3://srv/.bricks/gv0 node2://srv/.bricks/gv0
+gluster volume create gv0 replica 2 node1://srv/.bricks/gv0 node2://srv/.bricks/gv0
 #
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
@@ -112,14 +85,9 @@ gluster volume heal   gv0 info
 gluster volume start  gv0
 gluster volume status
 gluster volume info   gv0
-#
-# modify /etc/fstab
-#
-cat /etc/fstab
-# #localhost:gv0 /tsp0 glusterfs defaults,_netdev 0 0
-echo '# see https://wiki.archlinux.org/title/Glusterfs' >> /etc/fstab
-echo 'localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0' >> /etc/fstab
-mount -a
+
+mkdir -p /tsp0
+mount -t glusterfs localhost:gv0 /tsp0
 ```
 
 ### kvm/libvirt
@@ -140,6 +108,24 @@ systemctl status       libvirtd
 #ADMIN_USER=madmin 
 #usermod -aG kvm     $ADMIN_USER
 #usermod -aG libvirt $ADMIN_USER
+
+```
+
+### dirty hack for glusterd-/libvirtd-/mount-issues on boot up
+
+```
+# with following mount option in /etc/fstab, only unsafe migration is possible: 
+localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0
+
+# so dirty hack:
+vi /etc/fstab
+  localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0
+
+vi /usr/lib/systemd/system/libvirtd.service
+  After=glusterd.service
+  ExecStartPre=mount /tsp0
+
+systemctl daemon-reload
 
 ```
 
@@ -234,60 +220,10 @@ systemctl restart sshd
 
 ```
 
-# gluster administration examples
 
-```
-rm /tsp0/tescht*
+# Administration
 
-gluster peer status
-gluster volume status
-gluster volume remove-brick gv0 replica 1 node2:/srv/.bricks/gv0 force
-gluster volume status
-touch /tsp0/tescht1
-#ssh node2 rm -Rvf /srv/.bricks/gv0
-ssh node2 lsof /tsp0
-#ssh node2 systemctl stop libvirtd
-ssh node2 umount /tsp0
-ssh node2 umount /srv/.bricks
-ssh node2 mkfs.xfs -f /dev/sdb1
-ssh node2 mount /srv/.bricks
-ssh node2 mount /tsp0
-
-gluster volume add-brick gv0 replica 2 node2:/srv/.bricks/gv0
-gluster volume status
-ssh node2 ls -la /tsp0/tescht1
-
-ssh node2 systemctl stop glusterd
-touch /tsp0/tescht2
-ssh node2 systemctl start glusterd
-ssh node2 ls -la /tsp0/tescht2
-rm /tsp0/tescht*
-
-```
-
-# TODO
-
-
-## Administration
-
-### glusterd
-
-```
- kcvmc status
-
- glusterd -V
- gluster volume status
- gluster volume info
- gluster peer probe node2
- gluster peer probe node1
- gluster peer status
-
- tail -f /var/log/glusterfs/glusterd.log
- 
- systemctl status glusterd
- systemctl stop   glusterd
- systemctl start  glusterd
-```
+## manage qemu images / domains
 
 ### dist-upgrade
 
@@ -301,7 +237,7 @@ rm /tsp0/tescht*
  kvmc --node=node1 mig node2
 ```
 
-## kvmc util examples
+### kvmc util examples
 
 ```
  kvmc ls                   # list VMs
@@ -310,7 +246,7 @@ rm /tsp0/tescht*
  kvmc syncxml              # sync VMs definition files between hosts
 ```
 
-## virsh
+### virsh
 
 ```
  virsh list --all --name           # list all domains
@@ -319,10 +255,30 @@ rm /tsp0/tescht*
  virsh domtime  <domain>
 ```
 
-## domain stuff stuff
+### install qemu-guest-agent
+
 ```
  apt-get install -y qemu-guest-agent
  # todo: disable cloud-init
+```
+
+### resize partition of a cloud-init based VM
+
+```
+DOM="ubuntu-test"
+kvmc --domain=$DOM list images
+IMG=/tsp0/images/ubuntu-test.qcow
+qemu-img resize $IMG +5G
+qemu-img info   $IMG
+modprobe nbd max_part=8
+qemu-nbd --connect=/dev/nbd0 $IMG
+fdisk -l /dev/nbd0
+growpart -v /dev/nbd0 1
+resize2fs -f /dev/nbd0p1
+fdisk -l /dev/nbd0
+qemu-nbd --disconnect /dev/nbd0
+rmmod nbd
+kvmc --domain=$DOM up
 ```
 
 
@@ -353,7 +309,7 @@ kvmc --domain=${DOM} up
 kc-backup backup ${DOM}
 ```
 
-### Initialize a backup device
+### Initialize first backup device
 ```
   NAME="kvm-bup"
   read -s -p "Password: " passw && echo -n $passw > /tsp0/config/backup-passwd.conf  && passw=''
@@ -396,25 +352,60 @@ kc-backup backup ${DOM}
 ```
 
 ## gluster administration
+
+
+### general
+```
+ kcvmc status
+ glusterd -V
+ gluster volume status
+ gluster volume info
+ gluster peer probe node2
+ gluster peer probe node1
+ gluster peer status
+ tail -f /var/log/glusterfs/glusterd.log
+  systemctl status glusterd
+ systemctl stop   glusterd
+ systemctl start  glusterd
+```
+
+### resolve split-brain
+
+```
+# Here, <HOSTNAME:BRICKNAME> is selected as source brick and <FILE> present in the source brick is taken as the source for healing.
+# gluster volume heal <VOLNAME> split-brain source-brick <HOSTNAME:BRICKNAME>   <FILE>
+  gluster volume heal   gv0     split-brain source-brick node2:/srv/.bricks/gv0 /images/ubuntu-test.qcow2
+```
+
+### testing/info
+```
+kvmc ls
+kvmc status
+gluster pool list
+gluster volume status gv0
+gluster volume info   gv0
+gluster volume heal   gv0 info
+```
+
 ### remove brick of an existing replicated volume (gv0)
 
 [https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/](URL)
 
 ```
 # SSH into the glusterfs machine you wish to keep and do:
-# @kvm1 (node1):
+# @node1:
 gluster peer status
 gluster volume info
-node=node9
+node=node2
 gluster volume remove-brick gv0 replica 1 ${node}:/srv/.bricks/gv0 force
 gluster volume info gv0
 gluster peer detach ${node}
 gluster peer status
 ```
 
-### re-create brick **kvm2**
+### re-create brick **@node2**
 ```
-# @kvm2 (node2):
+# @node2:
 systemctl stop libvirtd
 umount /tsp0
 systemctl stop glusterd
@@ -434,24 +425,15 @@ systemctl start libvirtd
 ```
 
 ### add brick to an existing replicated volume (gv0)
+
 ```
-# @kvm1 (node1):
-node=node9
+# @node1:
+node=node2
 gluster peer probe ${node}
 gluster peer status
 gluster volume status
 gluster volume add-brick gv0 replica 2 ${node}:/srv/.bricks/gv0
 gluster volume status
-gluster volume info   gv0
-gluster volume heal   gv0 info
-```
-
-### testing
-```
-kvmc ls
-kvmc status
-gluster pool list
-gluster volume status gv0
 gluster volume info   gv0
 gluster volume heal   gv0 info
 ```

@@ -16,7 +16,7 @@ _usage()
 {
   if [ "$1" = "" ] ; then
     echo ""
-    echo "usage:"
+    echo "usage: `basename $0` [--node=<node>] [--simul] <command>"
     echo ""
     echo "`basename $0` mount             # mount backup device"
     echo "`basename $0` umount            # un-mount backup device"
@@ -29,19 +29,45 @@ _usage()
   fi
 }
 #############################
-_mount()
-{
+_virsh() {
+  _node="$1"
+  shift
+  virsh -c qemu+ssh://root@${_node}/system $@
+  return $?
+}
+#############################
+_ssh() {
+  _node="$1"
+  shift
+  ssh -q root@${_node} $@
+}
+#############################
+_check_for_backup_device() {
   FI=${KC_TSP_DIR}/config/backup-uuids.conf
   if [ ! -e $FI ] ; then
-    echo "error: missing uuid definition file <$FI>"
-    sf_set_error
-    sf_end
+    return 1
   fi
+  for host in $HOSTS ; do
+    for UUID in $( cat $FI ) ; do
+      DEV=`_ssh $host blkid  -U $UUID`
+      ret=$?
+      if [ "$ret" = "0" ] ; then
+        echo "$host"
+        return 0
+      fi
+    done
+  done
+  echo ""
+  return 0
+}
+#############################
+_mount() {
   if [ ! -d $MPOINT ] ; then
     echo "create mountpoint: $MPOINT"
     mkdir -p $MPOINT
   fi
   _mount=0
+  FI=${KC_TSP_DIR}/config/backup-uuids.conf
   for UUID in $( cat $FI ) ; do
     DEV=`blkid  -U $UUID`
     ret=$?
@@ -78,17 +104,17 @@ _info()
   DOM="$1"
   printf "#\n#\n#\n"
   unset imgs ; declare -A imgs
-  eval $( virsh domblklist $DOM --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+  eval $( _virsh ${NODE} domblklist $DOM --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
   for dev in ${!imgs[@]}; do
     echo $dev : ${imgs[$dev]}
     qemu-img info -U ${imgs[$dev]}
   done
   printf "#\n# libvirt chackpoint infos in /var/lib/libvirt/qemu/checkpoint/$DOM/:\n#\n"
-  ls -la /var/lib/libvirt/qemu/checkpoint/$DOM/
+  _ssh ${NODE} ls -la /var/lib/libvirt/qemu/checkpoint/$DOM/
   printf "#\n# virtnbdbackup checkpoint infos in /tsp0/sync/backup/$DOM/:\n#\n"
   ls -la /tsp0/sync/backup/$DOM/
   printf "#\n# virsh checkpoint-list for $DOM:\n#\n"
-  virsh checkpoint-list $DOM
+  _virsh ${NODE} checkpoint-list $DOM
   printf "#\n# repairing commands:\n#\n"
   echo " you can remove checkpoints from a domain with:"
   echo "   if bitmaps are in images:"
@@ -110,7 +136,7 @@ _info()
   img_list=$(kvmc --domain=$DOM list images)
   for i in $img_list ; do
     echo "image: $i :"
-    qemu-img info -U $i  | grep " name: virtnbdbackup"
+    _ssh ${NODE} qemu-img info -U $i  | grep " name: virtnbdbackup"
   done
 }
 ################################################################################################
@@ -118,6 +144,33 @@ _info()
 # magic main
 #
 ################################################################################################
+
+usbhd_at_node=$(_check_for_backup_device)
+if [ "$?" != "0" ] ; then
+  echo "no usbhd connected!!!"
+  exit 1
+fi
+if [ "$usbhd_at_node" != "$(hostname)" ] ; then
+  echo "delegate backup to $usbhd_at_node"
+  _ssh $usbhd_at_node $0 $@
+  exit $?
+fi
+opt_node=""
+opt_simul="0"
+CURROPT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --node=*)   opt_node=${1#*=}   ; shift 1 ;;
+    --simul)    opt_simul="1"      ; shift 1 ;;
+    *)   CURROPT="$CURROPT \"$1\"" ; shift 1 ;;
+  esac
+done
+eval set -- $CURROPT
+
+NODE=$(hostname)
+if [ "$opt_node" != "" ] ; then
+  NODE="$opt_node"
+fi
 
 CMD="$1"
 VMB="$2"
@@ -179,7 +232,8 @@ fi
 #
 if [ "$CMD" = "restore" ] ; then
   kvmc --domain=$VMB rm complete
-  virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
+  #virtnbdrestore -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
+  virtnbdrestore -U qemu+ssh://root@${NODE}/system --ssh-user root -D -N $VMB -i $MPOINT/$KC_BACKUP_AREA/domains/$VMB -o ${KC_TSP_DIR}/images
   ret=$?
   if [ "$ret" != "0" ] ; then
     echo "error: virtnbdrestore returns <$ret>"
@@ -197,13 +251,14 @@ fi
 # backup
 #
 if [ "$CMD" = "backup" ] ; then
+  # check for backup device
   if [ "$VMB" = "" ] ; then # only for complete backup
     #
     # backup rfs-changes
     #
     for host in $HOSTS ; do
       mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-      ssh -q ${KC_USER}@${host} "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+      _ssh $host "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
     done
     rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
     #
@@ -224,25 +279,31 @@ if [ "$CMD" = "backup" ] ; then
   #
   mkdir -p ${KC_TSP_DIR}/sync/backup
   echo "===================================================================="
-  vms=$( virsh list --all --name )
-  for vm in $vms ; do
-    if [[ $vm == \[*:*[1-9]\] ]] ; then
-      continue ;
+  for host in $HOSTS ; do
+    if [ "$opt_node" != "" -a "$host" !=  "$opt_node" ] ; then
+      continue
     fi
-    state=$( virsh domstate ${vm} )
-    _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
-    echo "####################################################"
-    echo "#  $vm @ ${h} ($state) ${_DATE}"
-    echo "####################################################"
-    # Get list of disk names and image paths
-    unset imgs ; declare -A imgs
-    disc=""
-    disc=$( virsh domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
-    eval $( virsh domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
-    if [ "$VMB" = "$vm" -o "$VMB" = "" ] ; then
-        #
-        # remove former backups from device, if new device detected
-        #
+    vms=$( _virsh ${host} list --all --name )
+    for vm in $vms ; do
+      if [[ $vm == \[*:*[1-9]\] ]] ; then
+        continue ;
+      fi
+      if [ "$VMB" != "$vm" -a "$VMB" != "" ] ; then
+        continue
+      fi
+      state=$( _virsh ${host} domstate ${vm} )
+      _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
+      echo "####################################################"
+      echo "#  $vm @ ${h} ($state) ${_DATE}"
+      echo "####################################################"
+      # Get list of disk names and image paths
+      unset imgs ; declare -A imgs
+      disc=""
+      disc=$( _virsh ${host} domblklist ${vm} --details | awk '/file +disk/ {print $3}' )
+      eval $( _virsh ${host} domblklist ${vm} --details | awk '/file +disk/ {print "imgs["$3"]="$4}' )
+      #
+      # check for removal former backups from device, if new device detected
+      #
       last_device=$( cat ${KC_TSP_DIR}/sync/backup/$vm.conf 2>/dev/null )
       if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
         rm -rvf  $MPOINT/$KC_BACKUP_AREA/domains/$vm 
@@ -263,31 +324,35 @@ if [ "$CMD" = "backup" ] ; then
         exclude_disks=${exclude_disks%,}
         exclude_disks="-x $exclude_disks"
       fi  
-      echo "jetzt backup für Domain <$vm> durchführen..."
       mkdir -p ${KC_TSP_DIR}/sync/backup/$vm
-      virtnbdbackup  -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
-      ret=$?
-      if [ "$ret" != "0" ] ; then
-        echo "error: virtnbdbackup returns <$ret>"
-        _umount
-        exit 1
+      if [ "$opt_simul" = "1" ] ; then
+        echo  virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
+      else
+        virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d $vm -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/$vm --checkpointdir ${KC_TSP_DIR}/sync/backup/$vm
+        ret=$?
+        if [ "$ret" != "0" ] ; then
+          echo "error: virtnbdbackup returns <$ret>"
+          _umount
+          exit 1
+        fi
       fi
-      # store backup device name
-      echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
-      echo "backup für Domain <$vm> ist durchgeführt"
-    fi
+    done
+    # store backup device name
+    echo "${INFO_HD_NAME}" > ${KC_TSP_DIR}/sync/backup/$vm.conf
   done
   echo "===================================================================="
   df -h  $MPOINT
   usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
-  echo "##############################"
-  tree $MPOINT/$KC_BACKUP_AREA
-  echo "##############################"
-  tree ${KC_TSP_DIR}/sync/backup
-  echo "##############################"
+  if [ "$opt_simul" = "0" ] ; then
+    echo "##############################"
+    tree $MPOINT/$KC_BACKUP_AREA
+    echo "##############################"
+    tree ${KC_TSP_DIR}/sync/backup
+    echo "##############################"
+  fi
   _umount
   date
-  if [ "$VMB" = "" ] ; then # only for complete backup
+  if [ "$VMB" = "" -a "$opt_simul" = "0" ] ; then # only for complete backup
     if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
       . ${KC_TSP_DIR}/config/kc-backup.conf
       FI=${KC_TSP_DIR}/sync/backup/kc-backup.rep

@@ -22,6 +22,7 @@ _help() {
     echo "#"
     echo "# commands:"
     echo "#"
+    echo " * info               # show infos about kvm environment"
     echo " * status             # show gluster status"
     echo " * ls                 # human readable list"
     echo " * list [images]      # list domains only (scripting output)"
@@ -42,7 +43,7 @@ _help() {
     echo ""
 
     echo "#"
-    echo "# other usefull kc commands:"
+    echo "# other kc commands:"
     echo "#"
     echo "kc-backup <command>  # USB-HD backup/restore" 
     echo "kc-rsync             # old USB-HD backup/restore"
@@ -388,6 +389,11 @@ if [ "$CMD" = "syncxml" ] ; then
   _syncxml
   exit $?
 fi
+if [ "$CMD" = "info" ] ; then
+  _info
+  exit $?
+fi
+
 if [[ "$CMD" == "backup" ]] ; then
   if [[ "$1" == "mount" || "$1" == "umount" || "$1" == "show"  || "$1" == "delete" ]] ; then
     _backup "" "" "" $@
@@ -397,12 +403,13 @@ if [[ "$CMD" == "backup" ]] ; then
     _backup "" "" "" mount
   fi
 fi
-_gluster_check
-gluster_state=$?
-if [ "$CMD" = "gluster_check" ] ; then
-  exit $gluster_state
+if [[ "$CMD" != "list" ]] ; then
+  _gluster_check
+  gluster_state=$?
+  if [ "$CMD" = "gluster_check" ] ; then
+    exit $gluster_state
+  fi
 fi
-
 for node in $host_list ; do
   if [[  "$opt_node" != "" &&   "$opt_node" != "$node" ]] ; then
     continue

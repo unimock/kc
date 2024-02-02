@@ -10,7 +10,7 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Requirements
 
- * ubuntu-server 22.04
+ * ubuntu-server 22.04 (amd64|arm64)
  * bare metal with VT support
 
 ## Installation
@@ -22,7 +22,7 @@ systemctl daemon-reload
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
-apt-get install -y net-tools
+apt-get install -y net-tools tree sysstat
 ```
 
 ### fix ip, hostname, bridges
@@ -45,7 +45,6 @@ vi /root/.ssh/authorized_keys
 ### useful aliases
 
 ```
-#touch /etc/cloud/cloud-init
 vi /root/.bash_aliases
 alias ipa='ip -br -c a'
 alias ipl='ip -br -c l'
@@ -95,10 +94,13 @@ mount -t glusterfs localhost:gv0 /tsp0
 https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
 
 ```
-egrep -c '(vmx|svm)' /proc/cpuinfo
 apt-get install -y cpu-checker
 kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils libvirt-daemon-driver-storage-gluster
+if [ "arm64" ] ; then
+  # https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
+  apt-get install  arm-trusted-firmware   # qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
+fi
 systemctl restart libvirtd
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds

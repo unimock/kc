@@ -1,4 +1,9 @@
 #!/bin/bash
+architecture=$(dpkg --print-architecture)
+EXTERNALS="
+yq;yaml processor;4.40.3;--version;https://github.com/mikefarah/yq/releases/download/v<VERSION>/yq_linux_${architecture}
+"
+
 CONFIG=/opt/kc/etc/config
 gluster_state="0"
 
@@ -22,6 +27,7 @@ _help() {
     echo "#"
     echo "# commands:"
     echo "#"
+    echo " * install            # install external binaries"
     echo " * info               # show infos about kvm environment"
     echo " * status             # show gluster status"
     echo " * ls                 # human readable list"
@@ -365,7 +371,34 @@ if [ "$1" = "" ] ; then
   _help
   exit 0
 fi
-
+if [ "$1" = "install" ] ; then
+  # install external utilities
+  mkdir -p /opt/kc/external
+  while read -r i ; do
+    name=$(    echo "$i" | cut -d";" -f1)
+    ver=$(     echo "$i" | cut -d";" -f3)
+    ver_cmd=$( echo "$i" | cut -d";" -f4)
+    url=$(     echo "$i" | cut -d";" -f5 | sed -e "s/<VERSION>/$ver/g")
+    version=""
+    if [ -e /opt/kc/external/$name ] ; then
+      version=$( /opt/kc/external/$name $ver_cmd 2>/dev/null | sed -e "s/(.*)//g" | grep -o '[0-9,.]*' )
+    fi
+    if [[ "$version" != "$ver" ]] ; then
+      echo "kc install: external <$name>"
+      FI=$(mktemp)
+      wget -nv -O $FI $url
+      rm -f /opt/kc/external/${name}
+      if [[ $url == *".tar.gz" ]] ; then
+        tar -C /opt/kc/external/ -xzf $FI
+      else
+        cp $FI /opt/kc/external/$name
+      fi
+      chmod a+x /opt/kc/external/$name
+      rm -f $FI
+    fi  
+  done <<< "$(echo "$EXTERNALS")"
+  exit 0
+fi
 CMD="$1"
 shift
 

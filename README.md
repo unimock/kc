@@ -54,7 +54,9 @@ vi .ssh/id_ed25519.pub
 # define gluster hosts
 vi /etc/hosts # node1...node4
 #knows issues (not yet working)
-virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
+# * virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
+# * AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
+# * rename Domain with virt-manager 
 ```
 
 ### ubuntu-22.04 server
@@ -71,6 +73,7 @@ apt-get install -y net-tools tree sysstat
 ```
 git clone https://github.com/unimock/kc.git /opt/kc
 ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
+kvmc install
 ```
 
 ### fix ip, hostname, bridges

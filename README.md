@@ -14,6 +14,48 @@ It only works as a wrapper for libvirt for convenient usage.
  * bare metal with VT support
 
 ## Installation
+### orangepi 5 plus
+
+* https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
+* https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
+* https://github.com/unimock/kc
+
+```
+# prepare SD card
+wget https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.33/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
+xz -dc /home/mok/Desktop/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz | dd of=/dev/sda  bs=4k
+# format NVMe Storage
+fdisk /dev/nvme0n1 # p1: 50G; p2: rest
+mkfs.xfs  /dev/nvme0n1p1
+mkfs.xfs  /dev/nvme0n1p2
+mkdir -p  /srv/var /srv/.bricks
+echo "/dev/nvme0n1p1 /srv/var     xfs defaults 0 0" >> /etc/fstab
+echo "/dev/nvme0n1p2 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
+mount -a
+# network configuration
+vi /etc/netplan/50-cloud-init.yaml
+chmod 600 /etc/netplan/50-cloud-init.yaml
+netplan apply
+# set timeserver
+vi /etc/systemd/timesyncd.conf
+ [Time]
+ NTP=185.125.190.58
+systemctl restart systemd-timesyncd.service
+# set hostname 
+echo "arm1" > /etc/hostname
+sed -i "s|preserve_hostname: false|preserve_hostname: true|g" /etc/cloud/cloud.cfg
+# set timezone
+timedatectl set-timezone Europe/Berlin
+# ssh keys
+vi .ssh/authorized_keys
+vi .ssh/config
+vi .ssh/id_ed25519
+vi .ssh/id_ed25519.pub
+# define gluster hosts
+vi /etc/hosts # node1...node4
+#knows issues (not yet working)
+virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
+```
 
 ### ubuntu-22.04 server
 ```
@@ -23,6 +65,12 @@ apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
 apt-get install -y net-tools tree sysstat
+```
+### kc
+
+```
+git clone https://github.com/unimock/kc.git /opt/kc
+ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
 ```
 
 ### fix ip, hostname, bridges

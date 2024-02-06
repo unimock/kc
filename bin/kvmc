@@ -196,7 +196,7 @@ _rm() {
       _ssh $node rm -f ${img_arr[$img]}
     done
   fi
-  _virsh $node undefine $domain --checkpoints-metadata --snapshots-metadata # --remove-all-storage
+  _virsh $node undefine $domain --checkpoints-metadata --snapshots-metadata --nvram # --remove-all-storage
   return $?
 }
 ##############################################################################################

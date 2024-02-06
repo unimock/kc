@@ -71,16 +71,27 @@ _ssh() {
   ssh -q root@${_node} $@
 }
 #############################
-_copyxml() {
-  node="$1" ; domain="$2" ; target_node="$3" ; target_domain="$4"
-  FI=$( mktemp )
-  _virsh ${node} dumpxml $domain            > $FI
-  sed -i "s|<name>${domain}</name>|<name>${target_domain}</name>|g"    $FI
+#_copyxml() {
+#  node="$1" ; domain="$2" ; target_node="$3" ; target_domain="$4"
+#  FI=$( mktemp )
+#  _virsh ${node} dumpxml $domain                                     > $FI
+#  sed -i "s|<name>${domain}</name>|<name>${target_domain}</name>|g"    $FI
+#  sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
+#  # keep mac address  sed -i '/mac address/d' $FI
+#  _virsh ${target_node} define $FI
+#  rm $FI
+#}
+#############################
+_savexml() {
+  node="$1" ; domain="$2"
+  mkdir -p $KC_TSP_DIR/sync/xml/${node}
+  FI="$KC_TSP_DIR/sync/xml/${node}/${domain}.xml"
+  _virsh ${node} dumpxml $domain                                     > $FI
+  echo " <$FI> created"
   sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
   # keep mac address  sed -i '/mac address/d' $FI
-  _virsh ${target_node} define $FI
-  rm $FI
 }
+
 #############################
 _gluster_check() {
   FI=${KC_TSP_DIR}/config/gluster.conf
@@ -214,9 +225,9 @@ _mig() {
     echo "error: gluster error!"
     return 1
   fi
-  _virsh $target undefine "[${domain}:${target}]" 2>/dev/null
+  #_virsh $target undefine "[${domain}:${target}]" 2>/dev/null
   _virsh $node   migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
-  _copyxml  "${target}" "${domain}" "${node}" "[${domain}:${node}]"
+  #_copyxml  "${target}" "${domain}" "${node}" "[${domain}:${node}]"
   _virsh $target autostart $domain
   #chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/*
   return 0
@@ -239,30 +250,32 @@ _sparsify() {
 }
 ##############################################################################################
 _syncxml() {
-  for node in $host_list ; do # delete coldstby domains
-    dom_arr=()    
-    dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
-    for value in ${dom_arr[@]} ; do
-      domain=""; node="" ; state=""
-      eval $value
-      if [[ "$domain" == "["*"]"   ]] ; then
-        kvmc --node=$node --domain=$domain rm domain
-      fi
-    done
-  done
+  #for node in $host_list ; do # delete coldstby domains
+  #  dom_arr=()    
+  #  dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+  #  for value in ${dom_arr[@]} ; do
+  #    domain=""; node="" ; state=""
+  #    eval $value
+  #    if [[ "$domain" == "["*"]"   ]] ; then
+  #      kvmc --node=$node --domain=$domain rm domain
+  #    fi
+  #  done
+  #done
   for node in $host_list ; do  # sync non coldstby domains between nodes
-  dom_arr=()
+    rm -rf $KC_TSP_DIR/sync/xml/${node}
+    dom_arr=()
     dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
     for value in ${dom_arr[@]} ; do
       domain=""; node="" ; state=""
       eval $value
       if [[ "$domain" != "["*"]"   ]] ; then
-        for target_node in $host_list ; do
-          if [[ "$node" == "$target_node" ]] ; then
-            continue
-          fi
-          _copyxml "${node}" "${domain}" "${target_node}" "[${domain}:${target_node}]"
-        done
+        #for target_node in $host_list ; do
+        #  if [[ "$node" == "$target_node" ]] ; then
+        #    continue
+        #  fi
+        #  _copyxml "${node}" "${domain}" "${target_node}" "[${domain}:${target_node}]"
+          _savexml "${node}" "${domain}"
+        #done
       fi
     done
   done

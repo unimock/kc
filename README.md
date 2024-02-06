@@ -1,4 +1,8 @@
 
+
+apt install cloud-utils cloud-image-utils virtinst libosinfo-bin libguestfs-tools
+
+
 # kc  ... kvm controller 
  
 ## Description
@@ -20,10 +24,21 @@ It only works as a wrapper for libvirt for convenient usage.
 * https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
 * https://github.com/unimock/kc
 
+#### prepare SD card
 ```
-# prepare SD card
-wget https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.33/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
-xz -dc /home/mok/Desktop/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz | dd of=/dev/sda  bs=4k
+FI=/cust/images/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
+wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.33/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
+lsblk
+xz -dc $FI | dd of=/dev/sda  bs=4k
+```
+#### boot system
+
+Login: ubuntu
+Password: ubuntu
+
+#### installation/configurations
+
+```
 # format NVMe Storage
 fdisk /dev/nvme0n1 # p1: 50G; p2: rest
 mkfs.xfs  /dev/nvme0n1p1

@@ -1,7 +1,5 @@
 
 
-apt install cloud-utils cloud-image-utils virtinst libosinfo-bin libguestfs-tools
-
 
 # kc  ... kvm controller 
  
@@ -29,7 +27,7 @@ It only works as a wrapper for libvirt for convenient usage.
 FI=/cust/images/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
 wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.33/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
 lsblk
-xz -dc $FI | dd of=/dev/sda  bs=4k
+xz -dc $FI | sudo dd of=/dev/sda  bs=4k
 ```
 #### boot system
 
@@ -39,6 +37,7 @@ Password: ubuntu
 #### installation/configurations
 
 ```
+lsblk
 # format NVMe Storage
 fdisk /dev/nvme0n1 # p1: 50G; p2: rest
 mkfs.xfs  /dev/nvme0n1p1
@@ -81,7 +80,7 @@ systemctl daemon-reload
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
-apt-get install -y net-tools tree sysstat
+apt-get install -y net-tools tree s-tui
 ```
 ### kc
 
@@ -111,12 +110,12 @@ vi /root/.ssh/authorized_keys
 ### useful aliases
 
 ```
-vi /root/.bash_aliases
-alias ipa='ip -br -c a'
-alias ipl='ip -br -c l'
-alias ipr='ip -br -c r'
+echo "alias ipa='ip -br -c a'" >> /root/.bash_aliases
+echo "alias ipl='ip -br -c l'" >> /root/.bash_aliases
+echo "alias ipr='ip -br -c r'" >> /root/.bash_aliases
+. .bash_aliases
 ```
-### glusterfs
+### glusterfs-server
 
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
@@ -126,8 +125,7 @@ vi /etc/netplan/00-installer-config.yaml
 netplan apply
 
 apt-get install -y glusterfs-server
-systemctl start glusterd
-systemctl enable glusterd
+systemctl enable --now glusterd
 systemctl status glusterd
 lsblk
 DEV=/dev/sdX
@@ -167,16 +165,14 @@ if [ "arm64" ] ; then
   # https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
   apt-get install  arm-trusted-firmware   # qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
 fi
-systemctl restart libvirtd
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds
+systemctl restart libvirtd
 systemctl enable --now libvirtd
-systemctl start        libvirtd
 systemctl status       libvirtd
 #ADMIN_USER=madmin 
 #usermod -aG kvm     $ADMIN_USER
 #usermod -aG libvirt $ADMIN_USER
-
 ```
 
 ### dirty hack for glusterd-/libvirtd-/mount-issues on boot up
@@ -186,8 +182,7 @@ systemctl status       libvirtd
 localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0
 
 # so dirty hack:
-vi /etc/fstab
-  localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0
+echo "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0"  >> /etc/fstab
 
 vi /usr/lib/systemd/system/libvirtd.service
   After=glusterd.service
@@ -197,44 +192,92 @@ systemctl daemon-reload
 
 ```
 
-
-### bridges and bonds
-
-https://fabianlee.org/2019/04/01/kvm-creating-a-bridged-network-with-netplan-on-ubuntu-bionic/
+### glusterfs-client (only for systems which works as gluster client)
 
 ```
-# netzwerk interfaces, die nicht verwendet werden auskommentieren!!! (wait for interface @ boot)
-vi /etc/netplan/00-installer-config.yaml
-netplan generate
-netplan apply
-brctl show
-#
-# create lan-net
-#
-cat <<EOF >/tmp/x
+systemctl disable --now glusterd
+# Einträge in /usr/lib/systemd/system/libvirtd.service können bleiben (see dirty hack)
+systemctl stop libvirtd
+umount /tsp0
+vi /etc/fstab
+  # replace: "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0"
+  # with   : "node1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=node2 0 0"
+systemctl start libvirtd
+ls /tsp0
+``` 
+
+### create script for networks and pools creation (can also be used in further installations)
+
+```
+mkdir -p /tsp0/scripts
+cat <<'XXX' >/tsp0/scripts/kc-virt-init
+#!/bin/bash
+XML=/tmp/x
+
+TYPE="net" ; NAME="lan-net"
+virsh $TYPE-info $NAME >/dev/null 2>&1
+if [ "$?" != "0"  ] ; then
+cat <<EOF > $XML
 <network>
-  <name>lan-net</name>
+  <name>$NAME</name>
   <forward mode="bridge"/>
-  <bridge name="lan-net"/>
+  <bridge name="$NAME"/>
 </network>
 EOF
-virsh net-define /tmp/x
-virsh net-start lan-net
-virsh net-autostart lan-net
-#
-# create mgmt-net
-#
-cat <<EOF >/tmp/x
+  virsh ${TYPE}-define $XML ; virsh ${TYPE}-start $NAME ; virsh ${TYPE}-autostart $NAME
+fi
+
+TYPE="net" ; NAME="mgmt-net"
+virsh $TYPE-info $NAME >/dev/null 2>&1
+if [ "$?" != "0"  ] ; then
+cat <<EOF > $XML
 <network>
-  <name>mgmt-net</name>
+  <name>$NAME</name>
   <forward mode="bridge"/>
-  <bridge name="mgmt-net"/>
+  <bridge name="$NAME"/>
 </network>
 EOF
-virsh net-define /tmp/x
-virsh net-start mgmt-net
-virsh net-autostart mgmt-net
-virsh net-list --all
+  virsh ${TYPE}-define $XML ; virsh ${TYPE}-start $NAME ; virsh ${TYPE}-autostart $NAME
+fi
+
+TYPE="pool" ; NAME="tsp0-images" ; TDIR="/tsp0/images"
+virsh $TYPE-info $NAME >/dev/null 2>&1
+if [ "$?" != "0"  ] ; then
+cat <<EOF > $XML
+<pool type="dir">
+  <name>$NAME</name>
+  <target>
+    <path>$TDIR</path>
+  </target>
+</pool>
+EOF
+  mkdir -p $TDIR
+  virsh ${TYPE}-define $XML ; virsh ${TYPE}-start $NAME ; virsh ${TYPE}-autostart $NAME
+fi
+
+TYPE="pool" ; NAME="tsp0-ISOs" ; TDIR="/tsp0/ISOs"
+virsh $TYPE-info $NAME >/dev/null 2>&1
+if [ "$?" != "0"  ] ; then
+cat <<EOF > $XML
+<pool type="dir">
+  <name>$NAME</name>
+  <target>
+    <path>$TDIR</path>
+  </target>
+</pool>
+EOF
+  mkdir -p $TDIR
+  virsh ${TYPE}-define $XML ; virsh ${TYPE}-start $NAME ; virsh ${TYPE}-autostart $NAME
+fi
+
+virsh net-list  --all
+virsh pool-list --all
+
+XXX
+
+chmod a+x /tsp0/scripts/kc-virt-init
+/tsp0/scripts/kc-virt-init
+
 ```
 
 ### virtnbdbackup
@@ -270,8 +313,8 @@ https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04
 apt-get install -y netdata
 vi /etc/netdata/netdata.conf # bind socket ip
 # firefox <ip>:19999
-systemctl enable netdata
-systemctl start  netdata
+systemctl enable --now netdata
+systemctl status  netdata
 
 ```
 
@@ -437,7 +480,7 @@ kc-backup backup ${DOM}
  systemctl start  glusterd
 ```
 
-### resolve split-brain
+### resolve split-brains
 
 ```
 # Here, <HOSTNAME:BRICKNAME> is selected as source brick and <FILE> present in the source brick is taken as the source for healing.
@@ -453,6 +496,7 @@ gluster pool list
 gluster volume status gv0
 gluster volume info   gv0
 gluster volume heal   gv0 info
+gluster volume heal   gv0 info summary
 ```
 
 ### remove brick of an existing replicated volume (gv0)
@@ -464,10 +508,10 @@ gluster volume heal   gv0 info
 # @node1:
 gluster peer status
 gluster volume info
-node=node2
-gluster volume remove-brick gv0 replica 1 ${node}:/srv/.bricks/gv0 force
+NODE=node2
+gluster volume remove-brick gv0 replica 1 ${NODE}:/srv/.bricks/gv0 force
 gluster volume info gv0
-gluster peer detach ${node}
+gluster peer detach ${NODE}
 gluster peer status
 ```
 
@@ -496,11 +540,11 @@ systemctl start libvirtd
 
 ```
 # @node1:
-node=node2
-gluster peer probe ${node}
+NODE=node2
+gluster peer probe ${NODE}
 gluster peer status
 gluster volume status
-gluster volume add-brick gv0 replica 2 ${node}:/srv/.bricks/gv0
+gluster volume add-brick gv0 replica 2 ${NODE}:/srv/.bricks/gv0
 gluster volume status
 gluster volume info   gv0
 gluster volume heal   gv0 info

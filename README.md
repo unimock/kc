@@ -504,12 +504,12 @@ gluster volume heal   gv0 info summary
 [https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/](URL)
 
 ```
-# SSH into the glusterfs machine you wish to keep and do:
-# @node1:
+PEER=node2
+REPLICA=1
+
 gluster peer status
-gluster volume info
-NODE=node2
-gluster volume remove-brick gv0 replica 1 ${NODE}:/srv/.bricks/gv0 force
+gluster volume heal gv0 info
+gluster volume remove-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0 force
 gluster volume info gv0
 gluster peer detach ${NODE}
 gluster peer status

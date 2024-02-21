@@ -167,6 +167,7 @@ if [ "arm64" ] ; then
 fi
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds
+apt-get install -y virt-top            # top utility for VMs
 systemctl restart libvirtd
 systemctl enable --now libvirtd
 systemctl status       libvirtd

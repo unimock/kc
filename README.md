@@ -16,11 +16,17 @@ It only works as a wrapper for libvirt for convenient usage.
  * bare metal with VT support
 
 ## Installation
+
 ### orangepi 5 plus
 
 * https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
 * https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
 * https://github.com/unimock/kc
+
+**known issues with RK3358:**
+  1. migration
+  2. copy out large files of a virtual machine
+
 
 #### prepare SD card
 ```

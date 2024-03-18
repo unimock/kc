@@ -512,7 +512,7 @@ gluster peer status
 gluster volume heal gv0 info
 gluster volume remove-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0 force
 gluster volume info gv0
-gluster peer detach ${NODE}
+gluster peer detach ${PEER}
 gluster peer status
 ```
 
@@ -540,12 +540,13 @@ systemctl start libvirtd
 ### add brick to an existing replicated volume (gv0)
 
 ```
-# @node1:
-NODE=node2
-gluster peer probe ${NODE}
+PEER="node3"
+PEERS=3
+
+gluster peer probe ${PEER}
 gluster peer status
 gluster volume status
-gluster volume add-brick gv0 replica 2 ${NODE}:/srv/.bricks/gv0
+gluster volume add-brick gv0 replica ${PEERS} ${PEER}:/srv/.bricks/gv0
 gluster volume status
 gluster volume info   gv0
 gluster volume heal   gv0 info

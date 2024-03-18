@@ -23,7 +23,7 @@ It only works as a wrapper for libvirt for convenient usage.
 * https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
 * https://github.com/unimock/kc
 
-**known issues with RK3358:**
+**known issues with RK3588:**
   1. migration
   2. copy out large files of a virtual machine
 

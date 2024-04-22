@@ -552,12 +552,12 @@ systemctl start libvirtd
 
 ```
 PEER="node3"
-PEERS=3
+REPLICA=3
 
 gluster peer probe ${PEER}
 gluster peer status
 gluster volume status
-gluster volume add-brick gv0 replica ${PEERS} ${PEER}:/srv/.bricks/gv0
+gluster volume add-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0
 gluster volume status
 gluster volume info   gv0
 gluster volume heal   gv0 info

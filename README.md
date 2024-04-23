@@ -44,6 +44,19 @@ wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.
 lsblk
 xz -dc $FI | sudo dd of=/dev/sda  bs=4k
 ```
+#### backup from SD
+```
+tar cvf  /cust/arm1.tar \
+ etc/hosts \
+ etc/hostname \
+ etc/netplan/50-cloud-init.yaml \
+ root/.bash_aliases \
+ root/.ssh/ \
+ etc/fstab \
+ etc/systemd/timesyncd.conf \
+ etc/cloud/cloud.cfg
+```
+
 #### boot system
 
 Login: ubuntu

@@ -449,7 +449,7 @@ if [[ "$CMD" == "backup" ]] ; then
     _backup "" "" "" mount
   fi
 fi
-if [[ "$CMD" != "list" ]] ; then
+if [[ "$CMD" != "list" && "$CMD" != "ls"  ]] ; then
   _gluster_check
   gluster_state=$?
   if [ "$CMD" = "gluster_check" ] ; then

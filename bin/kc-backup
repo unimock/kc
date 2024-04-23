@@ -171,50 +171,76 @@ _mount
 # reset domain from virtnbdback and remove from usb storage devce
 # full backup will be started next time
 #
+DOM=""
 if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
-  if [ "${VMB}" = ""  ] ; then
-    echo "error: no domain given"
+  for domain in $(kvmc list) ; do
+    if [ "$domain" = "$VMB" ] ; then
+      DOM="$domain"
+      break
+    fi
+  done
+  if [ "${DOM}" = ""  ] ; then
+    echo "error: no or wrong domain given"
     _umount
     exit 1
   fi
+  xxx=$(kvmc --domain=$DOM ls)
+  w_domain=$( echo $xxx | awk '{ print $1}')
+  w_state=$(  echo $xxx | awk '{ print $2}')
+  w_node=$(   echo $xxx | awk '{ print $3}')
+  w_disks=$(  echo $xxx | awk '{ print $4}'| sed 's|,| |g' )
+  virsh_opt=""
+  if [ "`hostname`" != "$w_node" ] ; then
+    virsh_opt="-c qemu+ssh://root@${w_node}/system"
+  fi 
+  echo "  domain: $w_domain"
+  echo "  node:   $w_node"
+  echo "  state:  $w_state"
+  echo "  disks:  $w_disks"
   echo "##############################################"
   echo "# check for aborted domjob:"
-  virsh domjobinfo  ${VMB} | sed "s|^|# |g"
-  virsh domjobinfo  ${VMB} | grep Backup >/dev/null 2>&1
+  virsh $virsh_opt domjobinfo  ${w_domain} | sed "s|^|# |g"
+  virsh $virsh_opt domjobinfo  ${w_domain} | grep Backup >/dev/null 2>&1
   if [ "$?" = "0" ] ; then
-echo    virsh domjobabort ${VMB}
+    echo    virsh $virsh_opt domjobabort ${w_domain}
   fi
   echo "##############################################"
   echo "# remove checkpoints from a domain"
-  virsh checkpoint-list $VMB | sed "s|^|# |g"
-  cp_list=$( virsh checkpoint-list $VMB | grep virtnbdbackup | awk '{ print $1}' )
+  virsh $virsh_opt checkpoint-list ${w_domain} | sed "s|^|# |g"
+  cp_list=$( virsh $virsh_opt checkpoint-list ${w_domain} | grep virtnbdbackup | awk '{ print $1}' )
   for i in $cp_list ; do
-echo    virsh checkpoint-delete $VMB --checkpointname $i #wenn bitmap in image umleiten nach 2>/dev/null
-echo    virsh checkpoint-delete $VMB --checkpointname $i --metadata #wenn bitmap nicht in image
+    echo    virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i  #wenn bitmap in image umleiten nach 2>/dev/null
+    echo    virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata #wenn bitmap nicht in image
+    if [ "$CMD" = "reset" ] ; then
+      virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i            2>/dev/null
+      virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata 2>/dev/null
+    fi
   done 
   echo "##############################################"
   echo "# check virtnbd bitmaps are in used images, if yes"
-  img_list=$(kvmc --domain=$VMB list images)
-  for i in $img_list ; do
-    echo "image: $i :" | sed "s|^|# |g"
-    qemu-img info -U $i  | grep " name: virtnbdbackup" | sed "s|^|# |g"
+  echo "kvmc --domain=${w_domain} down"
+  for i in ${w_disks} ; do
+    i=${i#*:}
+    bitmaps=$( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')
+    for b in $bitmaps ; do
+      echo "qemu-img bitmap $i --remove $b"
+    done
   done
-  echo "kvmc --domain=$VMB down"
-  for i in $img_list ; do
-echo "qemu-img bitmap  $i --remove virtnbdbackup.<TBD>"
-  done
-  echo "kvmc --domain=$VMB up"
+  echo "kvmc --domain=${w_domain} up"
   echo "##############################################"
-  echo  "# remove virtnbdbackup checkpoint informatios:" 
-  echo  rm -rvf ${KC_TSP_DIR}/sync/backup/${VMB}
+  echo  "# remove virtnbdbackup checkpoints:" 
+  echo  rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}
   echo "##############################################"
   echo "# remove last storage device information:"
-  echo  rm -vf  ${KC_TSP_DIR}/sync/backup/${VMB}.conf
+  echo  rm -vf  ${KC_TSP_DIR}/sync/backup/${w_domain}.conf
+  if [ "$CMD" = "reset" ] ; then
+    rm -vf  ${KC_TSP_DIR}/sync/backup/${w_domain}.conf
+  fi
   echo "##############################################"
   echo "# remove backup from usb device:" 
   echo "##############################################"
   echo "/opt/kc/bin/kc-backup mount"
-  echo  rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/${VMB}
+  echo  rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/${w_domain}
   echo "/opt/kc/bin/kc-backup umount"
   echo "##############################################"
 
@@ -278,6 +304,12 @@ if [ "$CMD" = "backup" ] ; then
     fi
     vms=$( _virsh ${host} list --all --name )
     for DOM in $vms ; do
+      if [ "${DOM}" = "mail1" ] ; then
+        echo "##################################################"
+        echo "# skipping domain <$DOM>"
+        echo "##################################################"
+        continue
+      fi
       if [[ ${DOM} == \[*:*[1-9]\] ]] ; then
         continue ;
       fi
@@ -301,7 +333,7 @@ if [ "$CMD" = "backup" ] ; then
       echo "# last backup device   : <$last_device>"
       echo "# current backup device: <${INFO_HD_NAME}>"
       if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
-        echo "# full backup needed becaus of device changed, so clening up:"
+        echo "# full backup needed becaus of device changed, so cleaning up:"
         echo "#  - directory <$MPOINT/$KC_BACKUP_AREA/domains/${DOM}>"
         echo "#  - directory <${KC_TSP_DIR}/sync/backup/${DOM}>"
         echo "#  - file <${KC_TSP_DIR}/sync/backup/${DOM}.conf>"

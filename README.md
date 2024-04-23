@@ -187,7 +187,7 @@ kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils libvirt-daemon-driver-storage-gluster
 if [ "arm64" ] ; then
   # https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
-  apt-get install  arm-trusted-firmware qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
+  apt-get install -y arm-trusted-firmware qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
 fi
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds

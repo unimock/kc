@@ -214,7 +214,6 @@ vi /usr/lib/systemd/system/libvirtd.service
   ExecStartPre=mount /tsp0
 
 systemctl daemon-reload
-
 ```
 
 ### glusterfs-client (only for systems which works as gluster client)
@@ -302,7 +301,6 @@ XXX
 
 chmod a+x /tsp0/scripts/kc-virt-init
 /tsp0/scripts/kc-virt-init
-
 ```
 
 ### virtnbdbackup
@@ -353,9 +351,7 @@ echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
 # scp /root/.ssh/* root@node2:/root/.ssh
 sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
 systemctl restart sshd
-
 ```
-
 
 # Administration
 
@@ -385,10 +381,13 @@ systemctl restart sshd
 ### virsh
 
 ```
- virsh list --all --name           # list all domains
- virsh start|shutdowm <domain>     # start/stop a domain
- virsh domstate <domain>
- virsh domtime  <domain>
+DOM= 
+virsh list --all --name       # list all domains
+virsh start|shutdowm $DOM     # start/stop a domain
+virsh domstate $DOM
+virsh domtime  $DOM
+virsh define $DOM /tsp0/sync/xml/kvm3/wws.xml
+virsh domrename <old> <new>
 ```
 
 ### install qemu-guest-agent

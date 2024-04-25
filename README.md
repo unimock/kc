@@ -310,7 +310,8 @@ chmod a+x /tsp0/scripts/kc-virt-init
 https://github.com/abbbi/virtnbdbackup
 
 ```
-wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_1.9.51-1_all.deb
+VERSION="1.9.51-1"
+wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_${VERSION}_all.deb
 dpkg --force-depends -i /tmp/vnb.deb
 apt --fix-broken install -y
 # append lines:

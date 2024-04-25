@@ -44,7 +44,7 @@ wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.
 lsblk
 xz -dc $FI | sudo dd of=/dev/sda  bs=4k
 ```
-#### backup from SD
+#### backup/restore from SD
 ```
 tar cvf  /xxx/arm1.tar \
  etc/hosts \
@@ -56,7 +56,10 @@ tar cvf  /xxx/arm1.tar \
  etc/systemd/timesyncd.conf \
  etc/cloud/cloud.cfg \
  etc/rsyslog.d/10-remote.conf
- # mkdir -p tsp0 srv/.bricks srv/var
+# mkdir -p tsp0 srv/.bricks srv/var
+# apt-get dist-upgrade
+# virtnbdbackup update (see above)
+# (cd /opt/kc ; git pull)
 ```
 
 #### boot system

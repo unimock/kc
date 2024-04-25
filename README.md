@@ -310,6 +310,8 @@ chmod a+x /tsp0/scripts/kc-virt-init
 https://github.com/abbbi/virtnbdbackup
 
 ```
+# apt list --installed | grep virtnbdbackup
+# apt-get purge virtnbdbackup
 VERSION="1.9.51-1"
 wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v1.9.51/virtnbdbackup_${VERSION}_all.deb
 dpkg --force-depends -i /tmp/vnb.deb

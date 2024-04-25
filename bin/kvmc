@@ -39,6 +39,7 @@ _help() {
     echo " * sparsify           # sparsify assigned images"
     echo " * gluster_check      # ret=0..OK, ret=1..ERR"
     echo " * syncxml            # syncxml on all hosts"
+    echo " * virsh ...          # call virsh command on on appropriate node
 
     echo "#"
     echo "# examples:"
@@ -58,7 +59,7 @@ _help() {
   fi
 }
 #############################
-_virsh() {
+_rem_virsh() {
   _node="$1"
   shift
   virsh -c qemu+ssh://root@${_node}/system $@
@@ -74,11 +75,11 @@ _ssh() {
 #_copyxml() {
 #  node="$1" ; domain="$2" ; target_node="$3" ; target_domain="$4"
 #  FI=$( mktemp )
-#  _virsh ${node} dumpxml $domain                                     > $FI
+#  _rem_virsh ${node} dumpxml $domain                                     > $FI
 #  sed -i "s|<name>${domain}</name>|<name>${target_domain}</name>|g"    $FI
 #  sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
 #  # keep mac address  sed -i '/mac address/d' $FI
-#  _virsh ${target_node} define $FI
+#  _rem_virsh ${target_node} define $FI
 #  rm $FI
 #}
 #############################
@@ -86,9 +87,9 @@ _savexml() {
   node="$1" ; domain="$2"
   mkdir -p $KC_TSP_DIR/sync/xml/${node}
   FI="$KC_TSP_DIR/sync/xml/${node}/${domain}.xml"
-  _virsh ${node} dumpxml $domain                                     > $FI
+  _rem_virsh ${node} dumpxml $domain                                     > $FI
   echo " <$FI> created"
-  sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
+#  sed -i "/uuid/d" $FI # hardware addresses need to be removed, libvirt will assign new addresses
   # keep mac address  sed -i '/mac address/d' $FI
 }
 
@@ -129,7 +130,7 @@ _list() {
     printf "%s\n" "$domain"
   else
     unset img_arr ; declare -A img_arr
-    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    eval $( _rem_virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     for img in ${!img_arr[@]}; do
       #qemu-img info -U ${img_arr[$img]}
       printf "%s\n" "${img_arr[$img]}"
@@ -144,7 +145,7 @@ _ls() {
     printf "%s\n" "$domain"
   else
     unset img_arr ; declare -A img_arr
-    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    eval $( _rem_virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     images=""
     for img in ${!img_arr[@]}; do
       images="$images,$img:${img_arr[$img]}"
@@ -159,13 +160,13 @@ _ls() {
 _down() {
   node=$1 ; domain=$2 ; state=$3
   if [[ "$state" != "shutoff" ]] ; then
-    _virsh $node shutdown ${domain} >/dev/null
+    _rem_virsh $node shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
     i=0
     while true ; do
       i=$(( i + 1 ))
       sleep 1
-      s=$( _virsh $node domstate ${domain} )
+      s=$( _rem_virsh $node domstate ${domain} )
       printf "."
       if [[ "$s" == "shut off" ]] ; then
         break ;
@@ -182,7 +183,7 @@ _down() {
 ##############################################################################################
 _up() {
   node=$1 ; domain=$2 ; state=$3
-  _virsh $node start $domain >/dev/null
+  _rem_virsh $node start $domain >/dev/null
   return $?
 }
 ##############################################################################################
@@ -193,11 +194,11 @@ _rm() {
     return 1
   fi
   if [[ "$state" != "shutoff" && "$state" != "coldstby" ]] ; then
-    _virsh $node destroy  $domain   # 
+    _rem_virsh $node destroy  $domain   # 
   fi
   if [[ "$subcmd" == "complete" ]] ; then
     unset img_arr ; declare -A img_arr
-    eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+    eval $( _rem_virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
     for img in ${!img_arr[@]}; do
       KC_BACKUP_EXCLUDE="*_temp_disk.qcow2"
       if [[ "$(basename ${img_arr[$img]})" == $KC_BACKUP_EXCLUDE ]]; then
@@ -207,7 +208,7 @@ _rm() {
       _ssh $node rm -f ${img_arr[$img]}
     done
   fi
-  _virsh $node undefine $domain --checkpoints-metadata --snapshots-metadata --nvram # --remove-all-storage
+  _rem_virsh $node undefine $domain --checkpoints-metadata --snapshots-metadata --nvram # --remove-all-storage
   return $?
 }
 ##############################################################################################
@@ -225,10 +226,10 @@ _mig() {
     echo "error: gluster error!"
     return 1
   fi
-  #_virsh $target undefine "[${domain}:${target}]" 2>/dev/null
-  _virsh $node   migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
+  #_rem_virsh $target undefine "[${domain}:${target}]" 2>/dev/null
+  _rem_virsh $node   migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
   #_copyxml  "${target}" "${domain}" "${node}" "[${domain}:${node}]"
-  _virsh $target autostart $domain
+  _rem_virsh $target autostart $domain
   #chown libvirt-qemu:kvm ${KC_TSP_DIR}/images/*
   return 0
 }
@@ -241,7 +242,7 @@ _sparsify() {
   fi
   _down $@
   unset img_arr ; declare -A img_arr
-  eval $( _virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
+  eval $( _rem_virsh $node domblklist $domain --details | awk '/file +disk/ {print "img_arr["$3"]="$4}' )
   for img in ${!img_arr[@]}; do
     _ssh $node virt-sparsify --in-place ${img_arr[$img]}
   done
@@ -252,7 +253,7 @@ _sparsify() {
 _syncxml() {
   #for node in $host_list ; do # delete coldstby domains
   #  dom_arr=()    
-  #  dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+  #  dom_arr+=( `_rem_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
   #  for value in ${dom_arr[@]} ; do
   #    domain=""; node="" ; state=""
   #    eval $value
@@ -264,7 +265,7 @@ _syncxml() {
   for node in $host_list ; do  # sync non coldstby domains between nodes
     rm -rf $KC_TSP_DIR/sync/xml/${node}
     dom_arr=()
-    dom_arr+=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+    dom_arr+=( `_rem_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
     for value in ${dom_arr[@]} ; do
       domain=""; node="" ; state=""
       eval $value
@@ -281,6 +282,15 @@ _syncxml() {
   done
   return 0
 }
+##############################################################################################
+_virsh() {
+  node=$1 ; domain=$2 ; state=$3
+  shift 3
+  #echo "node=$node ; domain=$domain ; state=$state rest=<$@>"
+  _rem_virsh $node $@
+  return $?
+}
+
 ##############################################################################################
 _backup() {
   MPOINT=/backup
@@ -449,7 +459,7 @@ if [[ "$CMD" == "backup" ]] ; then
     _backup "" "" "" mount
   fi
 fi
-if [[ "$CMD" != "list" && "$CMD" != "ls"  ]] ; then
+if [[ "$CMD" != "list" && "$CMD" != "ls" && "$CMD" != "virsh"  ]] ; then
   _gluster_check
   gluster_state=$?
   if [ "$CMD" = "gluster_check" ] ; then
@@ -460,7 +470,7 @@ for node in $host_list ; do
   if [[  "$opt_node" != "" &&   "$opt_node" != "$node" ]] ; then
     continue
   fi
-  dom_arr=( `_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
+  dom_arr=( `_rem_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
   for value in ${dom_arr[@]} ; do
     domain=""; node="" ; state=""
     eval $value
@@ -472,6 +482,9 @@ for node in $host_list ; do
     fi
     if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
       _${CMD} "$node" "$domain" "$state" $@
+      if [ "$opt_node" != "" ] ; then
+        break
+      fi
     fi
   done
 done

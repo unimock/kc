@@ -304,12 +304,12 @@ if [ "$CMD" = "backup" ] ; then
     fi
     vms=$( _virsh ${host} list --all --name )
     for DOM in $vms ; do
-      if [ "${DOM}" = "mail1" ] ; then
-        echo "##################################################"
-        echo "# skipping domain <$DOM>"
-        echo "##################################################"
-        continue
-      fi
+#      if [ "${DOM}" = "mail1" ] ; then
+#        echo "##################################################"
+#        echo "# skipping domain <$DOM>"
+#        echo "##################################################"
+#        continue
+#      fi
       if [[ ${DOM} == \[*:*[1-9]\] ]] ; then
         continue ;
       fi

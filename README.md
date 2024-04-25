@@ -46,7 +46,7 @@ xz -dc $FI | sudo dd of=/dev/sda  bs=4k
 ```
 #### backup from SD
 ```
-tar cvf  /cust/arm1.tar \
+tar cvf  /xxx/arm1.tar \
  etc/hosts \
  etc/hostname \
  etc/netplan/50-cloud-init.yaml \
@@ -54,7 +54,9 @@ tar cvf  /cust/arm1.tar \
  root/.ssh/ \
  etc/fstab \
  etc/systemd/timesyncd.conf \
- etc/cloud/cloud.cfg
+ etc/cloud/cloud.cfg \
+ etc/rsyslog.d/10-remote.conf
+ # mkdir -p tsp0 srv/.bricks srv/var
 ```
 
 #### boot system

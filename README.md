@@ -192,6 +192,7 @@ kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils libvirt-daemon-driver-storage-gluster
 if [ "arm64" ] ; then
   # https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
+  cd /usr/share/qemu/firmware/ ; ln -s 60-edk2-aarch64.json 00-edk2-aarch64.json
   apt-get install -y arm-trusted-firmware qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
 fi
 apt-get install -y libguestfs-tools    # virt-customize

@@ -173,6 +173,9 @@ _mount
 #
 DOM=""
 if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
+
+# TODO: wenn keine Domain als Parameter gegeben, dann loop ueber alle
+	
   for domain in $(kvmc list) ; do
     if [ "$domain" = "$VMB" ] ; then
       DOM="$domain"
@@ -213,9 +216,12 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
     echo    virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata #wenn bitmap nicht in image
     if [ "$CMD" = "reset" ] ; then
       virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i            2>/dev/null
-      virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata 2>/dev/null
+      virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata 2>/dev/null # wenn system aus
     fi
-  done 
+  done
+  echo "##############################################"
+  echo "# check libvirt checkpoint files:"
+  ls -la /var/lib/libvirt/qemu/checkpoint/${w_domain}
   echo "##############################################"
   echo "# check virtnbd bitmaps are in used images, if yes"
   echo "kvmc --domain=${w_domain} down"
@@ -230,6 +236,9 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
   echo "##############################################"
   echo  "# remove virtnbdbackup checkpoints:" 
   echo  rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}
+  if [ "$CMD" = "reset" ] ; then
+    rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}
+  fi
   echo "##############################################"
   echo "# remove last storage device information:"
   echo  rm -vf  ${KC_TSP_DIR}/sync/backup/${w_domain}.conf
@@ -304,7 +313,7 @@ if [ "$CMD" = "backup" ] ; then
     fi
     vms=$( _virsh ${host} list --all --name )
     for DOM in $vms ; do
-#      if [ "${DOM}" = "mail1" ] ; then
+#      if [ "${DOM}" = "bse1" ] ; then
 #        echo "##################################################"
 #        echo "# skipping domain <$DOM>"
 #        echo "##################################################"
@@ -343,6 +352,12 @@ if [ "$CMD" = "backup" ] ; then
         mkdir -p ${KC_TSP_DIR}/sync/backup/${DOM}
         rm -f    ${KC_TSP_DIR}/sync/backup/${DOM}.conf
       else
+        if [ "$state"  = "shut off" ] ; then
+	  echo "##################################################"
+          echo "# skip incremental backup for shut off domain:  <$DOM>"
+          echo "##################################################"
+	  continue
+	fi
         echo "# doing incremental, because no device change"
       fi
       #

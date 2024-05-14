@@ -39,8 +39,8 @@ vi /etc/netplan/armbian-default.yml
 
 #### prepare SD card
 ```
-FI=/cust/images/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
-wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v1.33/ubuntu-22.04.3-preinstalled-server-arm64-orangepi-5-plus.img.xz
+FI=/cust/images/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
+wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v2.1.0/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
 lsblk
 xz -dc $FI | sudo dd of=/dev/sda  bs=4k
 ```
@@ -109,7 +109,7 @@ systemctl daemon-reload
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
-apt-get install -y net-tools tree s-tui
+apt-get install -y net-tools tree s-tui libnet-ssleay-perl swaks
 ```
 ### kc
 

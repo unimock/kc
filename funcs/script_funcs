@@ -6,7 +6,6 @@ sf_start() {
  _sf_start=$(date +%s)
 }
 
-
 sf_set_error() {
   _sf_error=1
 }

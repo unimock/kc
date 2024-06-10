@@ -396,9 +396,13 @@ if [ "$CMD" = "backup" ] ; then
   usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
   if [ "$opt_simul" = "0" ] ; then
     echo "##############################"
-    tree $MPOINT/$KC_BACKUP_AREA
+    if [ "${VMB}" != "" ] ; then
+      tree ${MPOINT}/${KC_BACKUP_AREA}/domains/${VMB}
+    else
+      tree ${MPOINT}/${KC_BACKUP_AREA}
+    fi
     echo "##############################"
-    tree ${KC_TSP_DIR}/sync/backup
+    tree ${KC_TSP_DIR}/sync/backup/${VMB}
     echo "##############################"
   fi
   _umount

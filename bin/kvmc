@@ -163,6 +163,7 @@ _down() {
     _rem_virsh $node shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
     i=0
+    printf "$node "
     while true ; do
       i=$(( i + 1 ))
       sleep 1

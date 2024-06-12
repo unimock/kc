@@ -17,13 +17,6 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Installation
 
-### arm:armbian
-
-```
-apt-get install -y vim git dnsmasq dmicode
-vi /etc/netplan/armbian-default.yml
-```
-
 ### arm:orangepi 5 plus
 
 * https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
@@ -31,8 +24,10 @@ vi /etc/netplan/armbian-default.yml
 * https://github.com/unimock/kc
 
 **known issues with RK3588:**
-  1. libvirt: migration
-  2. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter)
+  1. libvirt: migration -> assign cpu in xml :
+       * "<vcpu placement="static" cpuset="0-3">2</vcpu>"
+       * "<vcpu placement="static" cpuset="4-7">2</vcpu>"
+  2. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
   3. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
   4. AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
   5. rename Domain with virt-manager 

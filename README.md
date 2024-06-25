@@ -30,7 +30,6 @@ It only works as a wrapper for libvirt for convenient usage.
   2. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
   3. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
   4. AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
-  5. rename Domain with virt-manager 
 
 #### prepare SD card
 ```
@@ -94,7 +93,7 @@ vi .ssh/config
 vi .ssh/id_ed25519
 vi .ssh/id_ed25519.pub
 # define gluster hosts
-vi /etc/hosts # node1...node4
+vi /etc/hosts # arm1,arm2,..,amd1,amd2,...
 ```
 
 ### ubuntu-22.04 server
@@ -144,7 +143,7 @@ echo "alias ipr='ip -br -c r'" >> /root/.bash_aliases
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
-vi /etc/hosts # "10.10.10.1 node1 10.10.10.2 node2 10.10.10.3 node3"
+vi /etc/hosts # "10.10.10.1 arm1 10.10.10.2 arm2 10.10.10.3 arm3"
 vi /etc/netplan/00-installer-config.yaml
 netplan apply
 
@@ -160,10 +159,10 @@ echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
 mount -a
 df -h
 gluster pool list
-gluster peer probe node2
+gluster peer probe arm2
 gluster pool list
 mkdir /tsp0
-gluster volume create gv0 replica 2 node1://srv/.bricks/gv0 node2://srv/.bricks/gv0
+gluster volume create gv0 replica 2 arm1://srv/.bricks/gv0 arm2://srv/.bricks/gv0
 #
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
 # See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
@@ -226,7 +225,7 @@ systemctl stop libvirtd
 umount /tsp0
 vi /etc/fstab
   # replace: "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0"
-  # with   : "node1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=node2 0 0"
+  # with   : "arm1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=arm2 0 0"
 systemctl start libvirtd
 ls /tsp0
 ``` 
@@ -353,7 +352,7 @@ ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
 cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
 echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
 echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
-# scp /root/.ssh/* root@node2:/root/.ssh
+# scp /root/.ssh/* root@arm2:/root/.ssh
 sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
 systemctl restart sshd
 ```
@@ -365,22 +364,22 @@ systemctl restart sshd
 ### dist-upgrade
 
 ```
- # @node2: (cold-standhy)
- kvmc status
- kvmc ls
- apt-get update ; apt-get autoremove ; apt-get dist-upgrade
- init 6
- # change the productive node. migrate VMs from node1 to node2
- kvmc --node=node1 mig node2
+# @arm2: (cold-standhy)
+kvmc status
+kvmc ls
+apt-get update ; apt-get autoremove ; apt-get dist-upgrade
+init 6
+# change the productive node. migrate VMs from arm1 to arm2
+kvmc --node=arm1 mig arm2
 ```
 
 ### kvmc util examples
 
 ```
- kvmc ls                   # list VMs
- kvmc --node=node1 mig node2 # migrate VMs from node1 to node2 
- kvmc status               # show gluster status
- kvmc syncxml              # sync VMs definition files between hosts
+kvmc ls                   # list VMs
+kvmc --node=arm1 mig arm2 # migrate VMs from arm1 to arm2 
+kvmc status               # show gluster status
+kvmc syncxml              # sync VMs definition files between hosts
 ```
 
 ### virsh
@@ -398,8 +397,8 @@ virsh domrename <old> <new>
 ### install qemu-guest-agent
 
 ```
- apt-get install -y qemu-guest-agent
- # todo: disable cloud-init
+apt-get install -y qemu-guest-agent
+# todo: disable cloud-init
 ```
 
 ### resize partition of a cloud-init based VM
@@ -421,74 +420,104 @@ rmmod nbd
 kvmc --domain=$DOM up
 ```
 
-
-## Backup
-
-### TBD: delete all virtnbdbackup data and remove virtnbdbackup bitmaps from images
+### create a raw disk that is not taken into account in kc-backup
 
 ```
-DOM="vw"
-kc-backup info ${DOM}
-# shutdown domain
-kvmc --domain=${DOM} down
-# delete all virtnbdbackup data and remove virtnbdbackup bitmaps from images
-rm -rvf /tsp0/sync/backup/${DOM}.conf /tsp0/sync/backup/${DOM}
-images=$(kvmc --domain=${DOM} list images)
-for i in $images ; do
-  echo "doing image: $i"
-  bitmaps=$(qemu-img info $i | grep " name: virtnbdbackup" | awk -F: '{ print $2}')
-  for b in $bitmaps ; do
-    echo "remove bitmap: $b"
-    qemu-img bitmap  $i --remove $b
-  done
-  qemu-img info $i
-done
-# start domain
-kvmc --domain=${DOM} up
-# start full backup
-kc-backup backup ${DOM}
+ssh arm1
+IMG=/tsp0/images/vw_data-snap.img
+SIZE=600G
+rm $IMG
+qemu-img create $IMG $SIZE
+modprobe nbd max_part=8
+qemu-nbd --format=raw --connect=/dev/nbd0 $IMG
+mkfs.xfs -f /dev/nbd0
+qemu-nbd --disconnect /dev/nbd0
+sleep 1
+rmmod nbd
+```
+virt-manager for **vm**:
+    * Gerät hinzufügen -> Speicher -> select image and assign as **SCSI**
+    * Boot-Optionen -> Startreihenfolge ggf. anpassen
+    * power on **vw**
+
+```
+ssh vw
+mkdir -p /data-snap
+echo "/sda /data-snap xfs defaults,nofail 0 0" >> /etc/fstab
+mount -a
+df -h
+# rsync -avzS --numeric-ids --delete /woher-auch-immer/ /data-snap
+```
+
+## kc-backup
+
+### initialize kc-backup
+
+```
+cat << EOF >/tsp0/config/kc-backup.conf
+KC_BACKUP_AREA="xxx"
+KC_BACKUP_FROM="admin@xxx.de"
+KC_BACKUP_TO="yyy@xxx.de"
+KC_BACKUP_SMTP="smtp.xxx.intra:25"
+# exclude domains seperated with blanks
+KC_BACKUP_EXCLUDE=""
+KC_BACKUP_SSH_OPT=""
+EOF
+```
+
+### management
+
+```
+# backup all defined domains
+kc-backup backup 
+# backup specified VM-domain
+DOM="xxx"
+kc-backup backup $DOM
+kc-backup info   $DOM
+kc-backup reset  $DOM 
 ```
 
 ### Initialize first backup device
+
 ```
-  NAME="kvm-bup"
-  read -s -p "Password: " passw && echo -n $passw > /tsp0/config/backup-passwd.conf  && passw=''
-  cryptsetup luksAddKey $DEV  /tsp0/config/backup-passwd.conf
-  cryptsetup -y -v luksFormat $DEV
-  cryptsetup luksOpen $DEV $NAME
-  cryptsetup -v status $NAME
-  mkfs.xfs /dev/mapper/$NAME
-  mount /dev/mapper/$NAME /backup
-  umount /backup
-  cryptsetup luksClose $NAME
+NAME="kvm-bup"
+read -s -p "Password: " passw && echo -n $passw > /tsp0/config/backup-passwd.conf  && passw=''
+cryptsetup luksAddKey $DEV  /tsp0/config/backup-passwd.conf
+cryptsetup -y -v luksFormat $DEV
+cryptsetup luksOpen $DEV $NAME
+cryptsetup -v status $NAME
+mkfs.xfs /dev/mapper/$NAME
+mount /dev/mapper/$NAME /backup
+umount /backup
+cryptsetup luksClose $NAME
 ```
 
 ### Initialize a additional backup device
 ```
-  blkid          # get the device name for DEV
-  DEV=/dev/sdc
-  INFO_HD_NAME="atk-bup-XXX"
-  NAME="kvm-bup"
+blkid          # get the device name for DEV
+DEV=/dev/sdc
+INFO_HD_NAME="atk-bup-XXX"
+NAME="kvm-bup"
 
-  dd if=/dev/urandom bs=1M count=8 of=$DEV
-  cryptsetup luksFormat -y $DEV #pw siehe /tsp0/config/backup-passwd.conf
-  cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
+dd if=/dev/urandom bs=1M count=8 of=$DEV
+cryptsetup luksFormat -y $DEV #pw siehe /tsp0/config/backup-passwd.conf
+cryptsetup luksOpen $DEV $NAME < /tsp0/config/backup-passwd.conf
 
-  blkid          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
-  vi /tsp0/config/backup-uuids.conf
+blkid          # get the UID of the device and append it to /tsp0/config/backup-uuids.conf
+vi /tsp0/config/backup-uuids.conf
 
-  mkfs.xfs /dev/mapper/$NAME
-  mkdir -p /backup
-  mount /dev/mapper/$NAME /backup
-  echo "INFO_HD_NAME=\"$INFO_HD_NAME\"" > /backup/INFO.cfg
-  cat /backup/INFO.cfg
-  umount /backup
-  cryptsetup luksClose $NAME
-  rmdir /backup
-  # test
-  kc-backup mount
-  df -h
-  kc-backup umount
+mkfs.xfs /dev/mapper/$NAME
+mkdir -p /backup
+mount /dev/mapper/$NAME /backup
+echo "INFO_HD_NAME=\"$INFO_HD_NAME\"" > /backup/INFO.cfg
+cat /backup/INFO.cfg
+umount /backup
+cryptsetup luksClose $NAME
+rmdir /backup
+# test
+kc-backup mount
+df -h
+kc-backup umount
 ```
 
 ## gluster administration
@@ -496,17 +525,17 @@ kc-backup backup ${DOM}
 
 ### general
 ```
- kcvmc status
- glusterd -V
- gluster volume status
- gluster volume info
- gluster peer probe node2
- gluster peer probe node1
- gluster peer status
- tail -f /var/log/glusterfs/glusterd.log
-  systemctl status glusterd
- systemctl stop   glusterd
- systemctl start  glusterd
+kcvmc status
+glusterd -V
+gluster volume status
+gluster volume info
+gluster peer probe arm2
+gluster peer probe arm1
+gluster peer status
+tail -f /var/log/glusterfs/glusterd.log
+systemctl status glusterd
+systemctl stop   glusterd
+systemctl start  glusterd
 ```
 
 ### resolve split-brains
@@ -514,7 +543,7 @@ kc-backup backup ${DOM}
 ```
 # Here, <HOSTNAME:BRICKNAME> is selected as source brick and <FILE> present in the source brick is taken as the source for healing.
 # gluster volume heal <VOLNAME> split-brain source-brick <HOSTNAME:BRICKNAME>   <FILE>
-  gluster volume heal   gv0     split-brain source-brick node2:/srv/.bricks/gv0 /images/ubuntu-test.qcow2
+  gluster volume heal   gv0     split-brain source-brick arm2:/srv/.bricks/gv0 /images/ubuntu-test.qcow2
 ```
 
 ### testing/info
@@ -533,7 +562,7 @@ gluster volume heal   gv0 info summary
 [https://support.rackspace.com/how-to/add-and-remove-glusterfs-servers/](URL)
 
 ```
-PEER=node2
+PEER=arm2
 REPLICA=1
 
 gluster peer status
@@ -544,9 +573,9 @@ gluster peer detach ${PEER}
 gluster peer status
 ```
 
-### re-create brick **@node2**
+### re-create brick **@arm2**
 ```
-# @node2:
+ssh arm2
 systemctl stop libvirtd
 umount /tsp0
 systemctl stop glusterd
@@ -568,7 +597,7 @@ systemctl start libvirtd
 ### add brick to an existing replicated volume (gv0)
 
 ```
-PEER="node3"
+PEER="arm3"
 REPLICA=3
 
 gluster peer probe ${PEER}

@@ -137,6 +137,7 @@ if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
   exit 1
 fi
 . ${KC_TSP_DIR}/config/kc-backup.conf
+KC_BACKUP_EXCLUDE=" ${KC_BACKUP_EXCLUDE} "
 if [ "$KC_BACKUP_AREA" = "" ] ; then
   echo "error: backup area <KC_BACKUP_AREA> not set in <${KC_TSP_DIR}/config/kc-backup.conf>."
   exit 1
@@ -173,9 +174,7 @@ _mount
 #
 DOM=""
 if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
-
-# TODO: wenn keine Domain als Parameter gegeben, dann loop ueber alle
-	
+  # TODO: wenn keine Domain als Parameter gegeben, dann loop ueber alle
   for domain in $(kvmc list) ; do
     if [ "$domain" = "$VMB" ] ; then
       DOM="$domain"
@@ -183,7 +182,7 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
     fi
   done
   if [ "${DOM}" = ""  ] ; then
-    echo "error: no or wrong domain given"
+    echo "error: no or unknown domain given!"
     _umount
     exit 1
   fi
@@ -200,42 +199,50 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
   echo "  node:   $w_node"
   echo "  state:  $w_state"
   echo "  disks:  $w_disks"
+
+
   echo "##############################################"
   echo "# check for aborted domjob:"
   virsh $virsh_opt domjobinfo  ${w_domain} | sed "s|^|# |g"
   virsh $virsh_opt domjobinfo  ${w_domain} | grep Backup >/dev/null 2>&1
   if [ "$?" = "0" ] ; then
-    echo    virsh $virsh_opt domjobabort ${w_domain}
+    echo "TODO: if reset is given, then do it automatically..."	  
+    echo "virsh $virsh_opt domjobabort ${w_domain}"
+  fi
+  echo "##############################################"
+  echo "# check if virtnbd bitmaps are in used images:"
+  for i in ${w_disks} ; do
+    i=${i#*:}
+    bitmaps=$( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')
+  done
+  if [ "$bitmaps" != "" ] ; then
+    echo "TODO: new parameter --with-restart"
+    echo "      wenn Para, dann führe die KOmmandos beim reset mit aus" 
+    echo "kvmc --domain=${w_domain} down"
+    for b in $bitmaps ; do
+      echo "qemu-img bitmap $i --remove $b"
+    done
+    echo "kvmc --domain=${w_domain} up"
   fi
   echo "##############################################"
   echo "# remove checkpoints from a domain"
   virsh $virsh_opt checkpoint-list ${w_domain} | sed "s|^|# |g"
   cp_list=$( virsh $virsh_opt checkpoint-list ${w_domain} | grep virtnbdbackup | awk '{ print $1}' )
   for i in $cp_list ; do
-    echo    virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i  #wenn bitmap in image umleiten nach 2>/dev/null
-    echo    virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata #wenn bitmap nicht in image
+    echo "virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i"            #wenn bitmap in image umleiten nach 2>/dev/null
+    echo "virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata" #wenn bitmap nicht in image
     if [ "$CMD" = "reset" ] ; then
       virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i            2>/dev/null
       virsh $virsh_opt checkpoint-delete ${w_domain} --checkpointname $i --metadata 2>/dev/null # wenn system aus
     fi
   done
   echo "##############################################"
-  echo "# check libvirt checkpoint files:"
-  ls -la /var/lib/libvirt/qemu/checkpoint/${w_domain}
+  echo "# check libvirt checkpoint files (qemu):"
+  tree -lhs /var/lib/libvirt/qemu/checkpoint/${w_domain}
   echo "##############################################"
-  echo "# check virtnbd bitmaps are in used images, if yes"
-  echo "kvmc --domain=${w_domain} down"
-  for i in ${w_disks} ; do
-    i=${i#*:}
-    bitmaps=$( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')
-    for b in $bitmaps ; do
-      echo "qemu-img bitmap $i --remove $b"
-    done
-  done
-  echo "kvmc --domain=${w_domain} up"
-  echo "##############################################"
-  echo  "# remove virtnbdbackup checkpoints:" 
-  echo  rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}
+  echo "# check libvirt checkpoint files (sync):"
+  tree -lhs ${KC_TSP_DIR}/sync/backup/${w_domain}
+  echo "rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}"
   if [ "$CMD" = "reset" ] ; then
     rm -rvf ${KC_TSP_DIR}/sync/backup/${w_domain}
   fi
@@ -313,12 +320,16 @@ if [ "$CMD" = "backup" ] ; then
     fi
     vms=$( _virsh ${host} list --all --name )
     for DOM in $vms ; do
-#      if [ "${DOM}" = "bse1" ] ; then
-#        echo "##################################################"
-#        echo "# skipping domain <$DOM>"
-#        echo "##################################################"
-#        continue
-#      fi
+      if [[ "$VMB" == "" ]] ; then
+	# if domain is given as parameter, then do not evaluate KC_BACKUP_EXCLUDE
+        #echo "KC_BACKUP_EXCLUDE=<$KC_BACKUP_EXCLUDE> DOM=<$DOM>"
+        if [[ "$KC_BACKUP_EXCLUDE" == *" $DOM "* ]] ; then
+          echo "############################################################"
+          echo "# skipping domain <$DOM> because of KC_BACKUP_EXCLUDE"
+          echo "############################################################"
+          continue
+        fi
+      fi
       if [[ ${DOM} == \[*:*[1-9]\] ]] ; then
         continue ;
       fi
@@ -360,21 +371,6 @@ if [ "$CMD" = "backup" ] ; then
 	fi
         echo "# doing incremental, because no device change"
       fi
-      #
-      # exclude images
-      #
-      exclude_disks=""
-      #for d in ${disc[@]}; do
-      #  img=${imgs[${d}]}
-      #  if [[ "$(basename $img)" == $KC_BACKUP_EXCLUDE ]]; then
-      #    exclude_disks="${exclude_disks},$d"
-      #    echo "skipping backup of image: <$img>, because it of KC_BACKUP_EXCLUDE setting <$KC_BACKUP_EXCLUDE>"
-      #  fi
-      #done
-      #if [ "${exclude_disks}" != "" ] ; then
-      #  exclude_disks=${exclude_disks%,}
-      #  exclude_disks="-x $exclude_disks"
-      #fi  
       mkdir -p ${KC_TSP_DIR}/sync/backup/${DOM}
       if [ "$opt_simul" = "1" ] ; then
         echo  virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
@@ -382,9 +378,11 @@ if [ "$CMD" = "backup" ] ; then
         virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
         ret=$?
         if [ "$ret" != "0" ] ; then
-          echo "error: virtnbdbackup returns <$ret>"
-          _umount
-          exit 1
+          echo "error: virtnbdbackup returns <$ret> on virnbdbackup for domain <$DOM>"
+          sf_set_error
+	  continue
+          #_umount
+          #exit 1
         fi
       fi
       # store backup device name
@@ -397,12 +395,12 @@ if [ "$CMD" = "backup" ] ; then
   if [ "$opt_simul" = "0" ] ; then
     echo "##############################"
     if [ "${VMB}" != "" ] ; then
-      tree ${MPOINT}/${KC_BACKUP_AREA}/domains/${VMB}
+      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}/domains/${VMB}
     else
-      tree ${MPOINT}/${KC_BACKUP_AREA}
+      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}
     fi
     echo "##############################"
-    tree ${KC_TSP_DIR}/sync/backup/${VMB}
+    tree -lhs ${KC_TSP_DIR}/sync/backup/${VMB}
     echo "##############################"
   fi
   _umount

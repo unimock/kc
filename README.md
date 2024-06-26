@@ -457,6 +457,7 @@ df -h
 ```
 cat << EOF >/tsp0/config/kc-backup.conf
 KC_BACKUP_AREA="xxx"
+KC_BACKUP_NODES"arm1 arm2 amd1"
 KC_BACKUP_FROM="admin@xxx.de"
 KC_BACKUP_TO="yyy@xxx.de"
 KC_BACKUP_SMTP="smtp.xxx.intra:25"

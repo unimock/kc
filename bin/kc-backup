@@ -6,10 +6,22 @@ sf_start
 
 MPOINT=/backup
 NAME="kvm-bup"
-HOSTS=$( cat ${KC_TSP_DIR}/config/hosts.conf )
 KC_BACKUP_EXCLUDE=""
+KC_BACKUP_NODES=""
 
 DEV=""
+if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
+  echo "error: missing definition file <${KC_TSP_DIR}/config/kc-backup.conf>."
+  exit 1
+fi
+. ${KC_TSP_DIR}/config/kc-backup.conf
+KC_BACKUP_EXCLUDE=" ${KC_BACKUP_EXCLUDE} "
+if [ "$KC_BACKUP_AREA" = "" ] ; then
+  echo "error: backup area <KC_BACKUP_AREA> not set in <${KC_TSP_DIR}/config/kc-backup.conf>."
+  exit 1
+fi
+
+
 
 #############################
 _usage()
@@ -47,7 +59,7 @@ _check_for_backup_device() {
   if [ ! -e $FI ] ; then
     return 1
   fi
-  for host in $HOSTS ; do
+  for host in $KC_BACKUP_NODES ; do
     for UUID in $( cat $FI ) ; do
       DEV=`_ssh $host blkid  -U $UUID`
       ret=$?
@@ -131,16 +143,6 @@ eval set -- $CURROPT
 NODE=$(hostname)
 if [ "$opt_node" != "" ] ; then
   NODE="$opt_node"
-fi
-if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
-  echo "error: missing definition file <${KC_TSP_DIR}/config/kc-backup.conf>."
-  exit 1
-fi
-. ${KC_TSP_DIR}/config/kc-backup.conf
-KC_BACKUP_EXCLUDE=" ${KC_BACKUP_EXCLUDE} "
-if [ "$KC_BACKUP_AREA" = "" ] ; then
-  echo "error: backup area <KC_BACKUP_AREA> not set in <${KC_TSP_DIR}/config/kc-backup.conf>."
-  exit 1
 fi
 
 CMD="$1"
@@ -291,7 +293,7 @@ if [ "$CMD" = "backup" ] ; then
     #
     # backup rfs-changes
     #
-    for host in $HOSTS ; do
+    for host in $KC_BACKUP_NODES ; do
       mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
       _ssh $host "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
     done
@@ -314,7 +316,7 @@ if [ "$CMD" = "backup" ] ; then
   #
   mkdir -p ${KC_TSP_DIR}/sync/backup
   echo "===================================================================="
-  for host in $HOSTS ; do
+  for host in $KC_BACKUP_NODES ; do
     if [ "$opt_node" != "" -a "$host" !=  "$opt_node" ] ; then
       continue
     fi

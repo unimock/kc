@@ -521,7 +521,20 @@ kc-backup mount
 df -h
 kc-backup umount
 ```
+### Repair backup device
 
+```
+lsblk
+DEV=/dev/sdb
+NAME=xxx
+cryptsetup luksOpen $DEV $NAME
+xfs_repair /dev/mapper/$NAME 
+mount  /dev/mapper/$NAME /mnt
+umount  /mnt
+xfs_repair /dev/mapper/$NAME
+cryptsetup luksClose $DEV $NAME
+
+```
 ## gluster administration
 
 

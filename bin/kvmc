@@ -163,7 +163,7 @@ _down() {
     _rem_virsh $node shutdown ${domain} >/dev/null
     # wait until system is down, timeout 120s
     i=0
-    printf "$node "
+    printf "shutdown $domain "
     while true ; do
       i=$(( i + 1 ))
       sleep 1
@@ -471,6 +471,11 @@ for node in $host_list ; do
   if [[  "$opt_node" != "" &&   "$opt_node" != "$node" ]] ; then
     continue
   fi
+  if [ "$opt_node" != "" -a "${CMD}" = "virsh" ] ; then
+    # if we want to call virsh on a node, then do not iterating domains
+    virsh -c qemu+ssh://root@${node}/system $@
+    exit $?
+  fi
   dom_arr=( `_rem_virsh $node list --all | tail -n +3 | sed '/^[[:space:]]*$/d' | awk '{ print "node=\""  "'$node'\";" "domain=\"" $2 "\";" "state=\"" $3 $4 "\"" }' `)
   for value in ${dom_arr[@]} ; do
     domain=""; node="" ; state=""
@@ -483,9 +488,6 @@ for node in $host_list ; do
     fi
     if [[ "$opt_state" == "$state" || "$opt_state" == "" ]] ; then
       _${CMD} "$node" "$domain" "$state" $@
-      if [ "$opt_node" != "" ] ; then
-        break
-      fi
     fi
   done
 done

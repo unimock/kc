@@ -426,7 +426,7 @@ kvmc --domain=$DOM up
 ssh arm1
 kvmc --domain=vw down
 IMG=/tsp0/images/vw_data-snap.img
-SIZE=300G
+SIZE=400G
 rm $IMG
 qemu-img create $IMG $SIZE
 modprobe nbd max_part=8

@@ -34,7 +34,7 @@ _usage()
     echo "`basename $0` umount            # un-mount backup device"
     echo "`basename $0` backup [<domain>] # do backup"
     echo "`basename $0` restore <domain>  # restore domain from backup device"
-    echo "`basename $0` reset   <domain>  # reset broken backups or delete domain backups from backup device"
+    echo "`basename $0` reset [--force-restart]   <domain>  # reset broken backups or delete domain backups from backup device"
     echo "`basename $0` info    <domain>  # show infos and commands for repairing broken backups"
     echo ""
     exit 0
@@ -130,11 +130,13 @@ if [ "$usbhd_at_node" != "$(hostname)" ] ; then
 fi
 opt_node=""
 opt_simul="0"
+opt_force_restart="0"
 CURROPT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --node=*)   opt_node=${1#*=}   ; shift 1 ;;
     --simul)    opt_simul="1"      ; shift 1 ;;
+    --force-restart) opt_force_restart="1"      ; shift 1 ;;
     *)   CURROPT="$CURROPT \"$1\"" ; shift 1 ;;
   esac
 done
@@ -218,13 +220,22 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
     bitmaps=$( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')
   done
   if [ "$bitmaps" != "" ] ; then
-    echo "TODO: new parameter --with-restart"
-    echo "      wenn Para, dann führe die KOmmandos beim reset mit aus" 
-    echo "kvmc --domain=${w_domain} down"
-    for b in $bitmaps ; do
-      echo "qemu-img bitmap $i --remove $b"
-    done
-    echo "kvmc --domain=${w_domain} up"
+    if [ "$CMD" = "reset" -a "$opt_force_restart" = "1" ] ; then
+      kvmc --domain=${w_domain} down
+      for b in $bitmaps ; do
+        qemu-img bitmap $i --remove $b
+      done
+      kvmc --domain=${w_domain} up
+    else
+      echo " bitmaps exists in libvirt domain"
+      echo "   call with parameter --force-restart"
+      echo " or do it manually:"
+      echo "kvmc --domain=${w_domain} down"
+      for b in $bitmaps ; do
+        echo "qemu-img bitmap $i --remove $b"
+      done
+      echo "kvmc --domain=${w_domain} up"
+    fi	    
   fi
   echo "##############################################"
   echo "# remove checkpoints from a domain"

@@ -476,7 +476,8 @@ kc-backup backup
 DOM="xxx"
 kc-backup backup $DOM
 kc-backup info   $DOM
-kc-backup reset  $DOM 
+kc-backup reset  $DOM
+kc-backup reset --force-restart $DOM  # stop VM and remove bitmaps within image
 ```
 
 ### Initialize first backup device

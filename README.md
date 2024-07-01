@@ -34,23 +34,37 @@ It only works as a wrapper for libvirt for convenient usage.
 #### prepare SD card
 ```
 FI=/cust/images/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
+ls -la $FI
 wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v2.1.0/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
 lsblk
-xz -dc $FI | sudo dd of=/dev/sda  bs=4k
+DEV=/dev/sda
+xz -dc $FI | sudo dd of=$DEV  bs=4k
 ```
 #### backup/restore from SD
 ```
-tar cvf  /xxx/arm1.tar \
+ssh arm3
+cd /
+tar -cvf  /xxx/armX.tar \
  etc/hosts \
  etc/hostname \
  etc/netplan/50-cloud-init.yaml \
+ etc/netdata/netdata.conf \
  root/.bash_aliases \
  root/.ssh/ \
  etc/fstab \
  etc/systemd/timesyncd.conf \
  etc/cloud/cloud.cfg \
  etc/rsyslog.d/10-remote.conf
-# mkdir -p tsp0 srv/.bricks srv/var
+
+# local:
+scp arm3:/xxx/armX.tar /xxx/
+lsblk
+DEV=/dev/sda2
+sudo mount /dev/sda2 /mnt
+cd /mnt
+sudo tar xvf /xxx/armX.tar
+sudo mkdir -p tsp0 srv/.bricks srv/var
+cd / ; sudo umount /mnt
 # apt-get dist-upgrade
 # virtnbdbackup update (see above)
 # (cd /opt/kc ; git pull)

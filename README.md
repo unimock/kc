@@ -25,11 +25,13 @@ It only works as a wrapper for libvirt for convenient usage.
 
 **known issues with RK3588:**
   1. libvirt: migration -> assign cpu in xml :
-       * "<vcpu placement="static" cpuset="0-3">2</vcpu>"
-       * "<vcpu placement="static" cpuset="4-7">2</vcpu>"
-  2. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
-  3. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
-  4. AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
+     ````
+       <vcpu placement="static" cpuset="0-3">2</vcpu>
+       <vcpu placement="static" cpuset="4-7">2</vcpu>
+     ````
+  3. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
+  4. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
+  5. AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
 
 #### prepare SD card
 ```

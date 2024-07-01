@@ -43,12 +43,12 @@ DEV=/dev/sda
 xz -dc $FI | sudo dd of=$DEV  bs=4k
 # Login: ubuntu ; password: ubuntu
 ```
-#### crate new SD from current system (arm3)
+#### create new SD from current system (arm3)
 ```
 # create backup from current system
 ssh arm3
 cd /
-tar -cvf  /xxx/armX.tar \
+tar -cvf  /xxx/arm3-rfs-backup.tar \
  etc/hosts \
  etc/hostname \
  etc/netplan/50-cloud-init.yaml \
@@ -61,16 +61,16 @@ tar -cvf  /xxx/armX.tar \
  etc/rsyslog.d/10-remote.conf
 
 # insert new SD into local PC
-scp arm3:/xxx/arm3.tar /xxx/ # copy backup from current system
+scp arm3:/xxx/arm3-rfs-backup.tar /xxx/ # copy backup from current system
 lsblk
 DEV=/dev/sda2
-sudo mount /dev/sda2 /mnt
+sudo mount $DEV /mnt
 sudo mkdir /mnt/xxx
-sudo cp /xxx/arm3.tar /mnt/xxx/backup.tar
+sudo cp /xxx/arm3-rfs-backup.tar /mnt/xxx/rfs-backup.tar
 sudo chroot /mnt
   passwd root
   cd /
-  tar xvf /xxx/backup.tar
+  tar xvf /xxx/rfs-backup.tar
   mkdir -p /tsp0 /srv/.bricks /srv/var
   echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-custom-networking.cfg
   #touch /etc/cloud/cloud-init.disabled

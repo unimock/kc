@@ -115,7 +115,7 @@ vi .ssh/id_ed25519.pub
 vi /etc/hosts # arm1,arm2,..,amd1,amd2,...
 ```
 
-### ubuntu-22.04 server
+### dist-upgrade and additional packages
 ```
 apt-get purge -y snapd
 systemctl daemon-reload
@@ -123,10 +123,6 @@ apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
 apt-get install -y net-tools tree s-tui libnet-ssleay-perl swaks
-```
-### kc
-
-```
 git clone https://github.com/unimock/kc.git /opt/kc
 ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
 kvmc install

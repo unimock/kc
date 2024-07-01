@@ -41,6 +41,7 @@ wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v2.
 lsblk
 DEV=/dev/sda
 xz -dc $FI | sudo dd of=$DEV  bs=4k
+# Login: ubuntu ; password: ubuntu
 ```
 #### crate new SD from current system (arm3)
 ```
@@ -77,11 +78,6 @@ sudo umount /mnt
 # insert SD into OPI
 ssh arm3
 ```
-
-#### boot system
-
-Login: ubuntu
-Password: ubuntu
 
 #### installation/configurations
 

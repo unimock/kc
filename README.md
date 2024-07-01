@@ -72,6 +72,7 @@ sudo chroot /mnt
   cd /
   tar xvf /xxx/backup.tar
   mkdir -p /tsp0 /srv/.bricks /srv/var
+  echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-custom-networking.cfg
   #touch /etc/cloud/cloud-init.disabled
   exit
 sudo umount /mnt

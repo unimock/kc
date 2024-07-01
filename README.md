@@ -83,12 +83,12 @@ Password: ubuntu
 lsblk
 # format NVMe Storage
 fdisk /dev/nvme0n1 # p1: 50G; p2: rest
-mkfs.xfs  /dev/nvme0n1p1
-mkfs.xfs  /dev/nvme0n1p2
+mkfs.xfs -f /dev/nvme0n1p1
+mkfs.xfs -f /dev/nvme0n1p2
 mkdir -p  /srv/var /srv/.bricks
 echo "/dev/nvme0n1p1 /srv/var     xfs defaults 0 0" >> /etc/fstab
 echo "/dev/nvme0n1p2 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
-mount -a
+systemctl daemon-reload
 # network configuration
 vi /etc/netplan/50-cloud-init.yaml
 chmod 600 /etc/netplan/50-cloud-init.yaml

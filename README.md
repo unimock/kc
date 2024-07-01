@@ -172,12 +172,13 @@ fdisk $DEV
 mkfs.xfs ${DEV}1
 mkdir /srv/.bricks
 echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
-mount -a
+systemctl daemon-reload
 df -h
 gluster pool list
 gluster peer probe arm2
 gluster pool list
 mkdir /tsp0
+#gluster volume create gv0 arm1://srv/.bricks/gv0 force
 gluster volume create gv0 replica 2 arm1://srv/.bricks/gv0 arm2://srv/.bricks/gv0
 #
 # Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.

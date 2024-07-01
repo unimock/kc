@@ -42,8 +42,9 @@ lsblk
 DEV=/dev/sda
 xz -dc $FI | sudo dd of=$DEV  bs=4k
 ```
-#### backup/restore from SD
+#### crate new SD from current system (arm3)
 ```
+# create backup from current system
 ssh arm3
 cd /
 tar -cvf  /xxx/armX.tar \
@@ -58,16 +59,23 @@ tar -cvf  /xxx/armX.tar \
  etc/cloud/cloud.cfg \
  etc/rsyslog.d/10-remote.conf
 
-# local:
-scp arm3:/xxx/armX.tar /xxx/
+# insert new SD into local PC
+scp arm3:/xxx/arm3.tar /xxx/ # copy backup from current system
 lsblk
 DEV=/dev/sda2
 sudo mount /dev/sda2 /mnt
-cd /mnt
-sudo tar xvf /xxx/armX.tar
-sudo mkdir -p tsp0 srv/.bricks srv/var
-sudo touch etc/cloud/cloud-init.disabled
-cd / ; sudo umount /mnt
+sudo mkdir /mnt/xxx
+sudo cp /xxx/arm3.tar /mnt/xxx/backup.tar
+sudo chroot /mnt
+  passwd root
+  cd /
+  tar xvf /xxx/backup.tar
+  mkdir -p /tsp0 /srv/.bricks /srv/var
+  touch /etc/cloud/cloud-init.disabled
+  exit
+sudo umount /mnt
+# insert SD into OPI
+ssh arm3
 ```
 
 #### boot system

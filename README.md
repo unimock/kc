@@ -17,7 +17,7 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Installation
 
-### arm:orangepi 5 plus
+### arm:orangepi 5 plus (OPi5+)
 
 * https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
 * https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
@@ -72,10 +72,10 @@ sudo chroot /mnt
   cd /
   tar xvf /xxx/backup.tar
   mkdir -p /tsp0 /srv/.bricks /srv/var
-  touch /etc/cloud/cloud-init.disabled
+  #touch /etc/cloud/cloud-init.disabled
   exit
 sudo umount /mnt
-# insert SD into OPI
+# insert SD into OPi5+
 ssh arm3
 ```
 

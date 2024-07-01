@@ -93,9 +93,10 @@ echo "/dev/nvme0n1p1 /srv/var     xfs defaults 0 0" >> /etc/fstab
 echo "/dev/nvme0n1p2 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
 systemctl daemon-reload
 # network configuration
+# https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
 vi /etc/netplan/50-cloud-init.yaml
 chmod 600 /etc/netplan/50-cloud-init.yaml
-netplan apply
+netplan apply  # brctl show
 # set timeserver
 vi /etc/systemd/timesyncd.conf
  [Time]
@@ -113,6 +114,12 @@ vi .ssh/id_ed25519
 vi .ssh/id_ed25519.pub
 # define gluster hosts
 vi /etc/hosts # arm1,arm2,..,amd1,amd2,...
+# useful aliases
+echo "alias ipa='ip -br -c a'" >> /root/.bash_aliases
+echo "alias ipl='ip -br -c l'" >> /root/.bash_aliases
+echo "alias ipr='ip -br -c r'" >> /root/.bash_aliases
+. .bash_aliases
+vi /etc/hosts # "10.10.10.1 arm1 10.10.10.2 arm2 10.10.10.3 arm3"
 ```
 
 ### dist-upgrade and additional packages
@@ -127,41 +134,11 @@ git clone https://github.com/unimock/kc.git /opt/kc
 ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
 kvmc install
 ```
-
-### fix ip, hostname, bridges
-
-https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
-
-```
-timedatectl set-timezone Europe/Berlin
-vi /etc/hosts
-vi /etc/hostname
-chmod 600  /etc/netplan/00-installer-config.yaml
-vi /etc/netplan/00-installer-config.yaml
-netplan generate
-netplan apply
-brctl show
-# apply your ssh-keys
-vi /root/.ssh/authorized_keys
-```
-
-### useful aliases
-
-```
-echo "alias ipa='ip -br -c a'" >> /root/.bash_aliases
-echo "alias ipl='ip -br -c l'" >> /root/.bash_aliases
-echo "alias ipr='ip -br -c r'" >> /root/.bash_aliases
-. .bash_aliases
-```
 ### glusterfs-server
 
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
-vi /etc/hosts # "10.10.10.1 arm1 10.10.10.2 arm2 10.10.10.3 arm3"
-vi /etc/netplan/00-installer-config.yaml
-netplan apply
-
 apt-get install -y glusterfs-server
 systemctl enable --now glusterd
 systemctl status glusterd

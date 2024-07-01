@@ -66,10 +66,8 @@ sudo mount /dev/sda2 /mnt
 cd /mnt
 sudo tar xvf /xxx/armX.tar
 sudo mkdir -p tsp0 srv/.bricks srv/var
+sudo touch etc/cloud/cloud-init.disabled
 cd / ; sudo umount /mnt
-# apt-get dist-upgrade
-# virtnbdbackup update (see above)
-# (cd /opt/kc ; git pull)
 ```
 
 #### boot system

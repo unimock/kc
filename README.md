@@ -5,8 +5,7 @@
  
 ## Description
 
-kc environment contains a couple of bash scripts to install and manage kvm  
-from a central host and directory (master).
+kc environment contains a couple of bash scripts to install and manage a cluster of kvm nodes.
 
 It only works as a wrapper for libvirt for convenient usage.
 
@@ -17,7 +16,7 @@ It only works as a wrapper for libvirt for convenient usage.
 
 ## Installation
 
-### arm:orangepi 5 plus (OPi5+)
+### arm: orangepi 5 plus (OPi5+)
 
 * https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
 * https://github.com/Joshua-Riek/ubuntu-rockchip/wiki/Orange-Pi-5-Plus
@@ -29,144 +28,136 @@ It only works as a wrapper for libvirt for convenient usage.
        <vcpu placement="static" cpuset="0-3">2</vcpu>
        <vcpu placement="static" cpuset="4-7">2</vcpu>
      ````
-  3. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
-  4. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
-  5. AppArmor not enabled (aa-status; journalctl --all | grep 'AppArmor')
+  2. libvirt: copy out large files of a virtual machine (use e1000 instead virtio network adapter) -> solved in ubuntu-24.04
+  3. virt-customize -a /srv/var/tmp/ubuntu-22.04-server.qcow2 --install qemu-guest-agent
 
 #### prepare SD card
 ```
-FI=/cust/images/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
+IMAGE_VER="2.2.1"
+UBUNTU_VER="22.04"
+FI=/cust/images/ubuntu-${UBUNTU_VER}-preinstalled-server-arm64-orangepi-5-plus.img.xz
 ls -la $FI
-wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v2.1.0/ubuntu-24.04-preinstalled-server-arm64-orangepi-5-plus.img.xz
+wget -O $FI https://github.com/Joshua-Riek/ubuntu-rockchip/releases/download/v${IMAGE_VER}/ubuntu-${UBUNTU_VER}-preinstalled-server-arm64-orangepi-5-plus.img.xz
 lsblk
 DEV=/dev/sda
 xz -dc $FI | sudo dd of=$DEV  bs=4k
-# Login: ubuntu ; password: ubuntu
+mount ${DEV}/1 /mnt
+vi /mnt/user-data       # hostname, timezone, user, password, ssh-keys,...
+# network configuration (https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/) :
+vi /mnt/network-config  # interfaces, ip addresses, ..
+umount /mnt
 ```
-#### create new SD from current system (arm3)
+
+### dist-upgrade and additional packages
+
+```
+apt-get update
+apt-get dist-upgrade -y
+init 6 
+apt-get purge -y snapd
+systemctl daemon-reload
+apt-get autoremove -y
+apt-get install -y net-tools tree s-tui libnet-ssleay-perl swaks
+#
+# install kvmc
+#
+git clone https://github.com/unimock/kc.git /opt/kc
+ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
+kvmc install
+#
+# install netdata (https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04)
+#
+apt-get install -y netdata
+MYIP=$(host `hostname` | cut -d " " -f 4)
+sed -i "s|IP = 127.0.0.1|IP = $MYIP|g" /etc/netdata/netdata.conf
+systemctl enable --now netdata
+# test firefox <ip>:19999
+
+# check apparmor
+aa-status ; journalctl --all | grep 'AppArmor'
+
+# check timesyncd
+timedatectl status
+```
+
+#### TODO: create new SD from current system (arm3)
 ```
 # create backup from current system
 ssh arm3
 cd /
 tar -cvf  /xxx/arm3-rfs-backup.tar \
- etc/hosts \
- etc/hostname \
- etc/netplan/50-cloud-init.yaml \
  etc/netdata/netdata.conf \
  root/.bash_aliases \
  root/.ssh/ \
  etc/fstab \
- etc/systemd/timesyncd.conf \
- etc/cloud/cloud.cfg \
- etc/rsyslog.d/10-remote.conf
-
-# insert new SD into local PC
-scp arm3:/xxx/arm3-rfs-backup.tar /xxx/ # copy backup from current system
-lsblk
-DEV=/dev/sda2
-sudo mount $DEV /mnt
-sudo mkdir /mnt/xxx
-sudo cp /xxx/arm3-rfs-backup.tar /mnt/xxx/rfs-backup.tar
-sudo chroot /mnt
-  passwd root
-  cd /
-  tar xvf /xxx/rfs-backup.tar
-  mkdir -p /tsp0 /srv/.bricks /srv/var
-  echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-custom-networking.cfg
-  #touch /etc/cloud/cloud-init.disabled
-  exit
-sudo umount /mnt
-# insert SD into OPi5+
-ssh arm3
+ etc/rsyslog.d/10-remote.conf \
+ etc/hosts
 ```
 
-#### installation/configurations
+#### configurations
 
 ```
-lsblk
-# format NVMe Storage
-fdisk /dev/nvme0n1 # p1: 50G; p2: rest
-mkfs.xfs -f /dev/nvme0n1p1
-mkfs.xfs -f /dev/nvme0n1p2
-mkdir -p  /srv/var /srv/.bricks
-echo "/dev/nvme0n1p1 /srv/var     xfs defaults 0 0" >> /etc/fstab
-echo "/dev/nvme0n1p2 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
-systemctl daemon-reload
-# network configuration
-# https://www.linuxtechi.com/static-ip-address-on-ubuntu-server/
-vi /etc/netplan/50-cloud-init.yaml
-chmod 600 /etc/netplan/50-cloud-init.yaml
-netplan apply  # brctl show
-# set timeserver
-vi /etc/systemd/timesyncd.conf
- [Time]
- NTP=185.125.190.58
-systemctl restart systemd-timesyncd.service
-# set hostname 
-echo "arm1" > /etc/hostname
-sed -i "s|preserve_hostname: false|preserve_hostname: true|g" /etc/cloud/cloud.cfg
-# set timezone
-timedatectl set-timezone Europe/Berlin
-# ssh keys
-vi .ssh/authorized_keys
-vi .ssh/config
-vi .ssh/id_ed25519
-vi .ssh/id_ed25519.pub
-# define gluster hosts
-vi /etc/hosts # arm1,arm2,..,amd1,amd2,...
+# 
+# define gluster node in /etc/hosts
+#
+ENTRY="$(host `hostname` | cut -d " " -f 4) `hostname`"
+sed -i "1s/^/$ENTRY \n\n/" /etc/hosts
+#
+# create ssh keys for kvm's communication
+#
+ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
+cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
+echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
+echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
+
+#
 # useful aliases
-echo "alias ipa='ip -br -c a'" >> /root/.bash_aliases
-echo "alias ipl='ip -br -c l'" >> /root/.bash_aliases
-echo "alias ipr='ip -br -c r'" >> /root/.bash_aliases
+#
+cat <<'EOF' >>/root/.bash_aliases
+alias ipa='ip -br -c a'
+alias ipl='ip -br -c l'
+alias ipr='ip -br -c r'
+EOF
 . .bash_aliases
-vi /etc/hosts # "10.10.10.1 arm1 10.10.10.2 arm2 10.10.10.3 arm3"
+
 ```
 
-### dist-upgrade and additional packages
-```
-apt-get purge -y snapd
-systemctl daemon-reload
-apt-get update
-apt-get dist-upgrade -y
-apt-get autoremove -y
-apt-get install -y net-tools tree s-tui libnet-ssleay-perl swaks
-git clone https://github.com/unimock/kc.git /opt/kc
-ln -s /opt/kc/bin/kvmc /usr/local/bin/kvmc
-kvmc install
-```
 ### glusterfs-server
 
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
 ```
+# format NVMe Storage
+lsblk
+DEV="/dev/nvme0n1"
+
+wipefs --all --force $DEV
+sgdisk -o $DEV
+sgdisk -n 1:0:+50G $DEV
+sgdisk -n 2:0:0 $DEV
+
+mkfs.xfs -f ${DEV}p1
+mkfs.xfs -f ${DEV}p2
+mkdir -p  /srv/var /srv/.bricks
+echo "${DEV}p1 /srv/var     xfs defaults 0 0" >> /etc/fstab
+echo "${DEV}p2 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
+mount -a
+df -h | grep "${DEV}p1"
+df -h | grep "${DEV}p2"
+
 apt-get install -y glusterfs-server
 systemctl enable --now glusterd
 systemctl status glusterd
-lsblk
-DEV=/dev/sdX
-fdisk $DEV
-mkfs.xfs ${DEV}1
-mkdir /srv/.bricks
-echo "${DEV}1 /srv/.bricks xfs defaults 0 0" >> /etc/fstab
-systemctl daemon-reload
-df -h
 gluster pool list
-gluster peer probe arm2
-gluster pool list
-mkdir /tsp0
-#gluster volume create gv0 arm1://srv/.bricks/gv0 force
-gluster volume create gv0 replica 2 arm1://srv/.bricks/gv0 arm2://srv/.bricks/gv0
-#
-# Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
-# See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
-#
-gluster volume heal   gv0 info
+gluster volume create gv0 $(hostname)://srv/.bricks/gv0 force
 gluster volume start  gv0
 gluster volume status
 gluster volume info   gv0
 
 mkdir -p /tsp0
 mount -t glusterfs localhost:gv0 /tsp0
+df -h | grep "/tsp0"
+umount /tsp0
 ```
 
 ### kvm/libvirt
@@ -177,51 +168,47 @@ https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
 apt-get install -y cpu-checker
 kvm-ok
 apt-get install -y qemu-kvm libvirt-daemon-system virtinst libvirt-clients bridge-utils libvirt-daemon-driver-storage-gluster
-if [ "arm64" ] ; then
+if [ "$(dpkg --print-architecture)" = "arm64" ] ; then
   # https://jobcespedes.dev/2023/11/running-virtual-machines-on-orange-pi-5/
-  cd /usr/share/qemu/firmware/ ; ln -s 60-edk2-aarch64.json 00-edk2-aarch64.json
   apt-get install -y arm-trusted-firmware qemu-system-arm qemu-efi-aarch64 qemu-efi-arm  seabios ipxe-qemu
+  ( cd /usr/share/qemu/firmware/ ; ln -s 60-edk2-aarch64.json 00-edk2-aarch64.json )
 fi
 apt-get install -y libguestfs-tools    # virt-customize
 apt-get install -y cloud-image-utils   # cloud-localds
 apt-get install -y virt-top            # top utility for VMs
+
 systemctl restart libvirtd
 systemctl enable --now libvirtd
 systemctl status       libvirtd
-#ADMIN_USER=madmin 
-#usermod -aG kvm     $ADMIN_USER
-#usermod -aG libvirt $ADMIN_USER
+
+echo "#system is gluster client:"                                              >> /etc/fstab
+echo "#arm1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=arm2 0 0" >> /etc/fstab
+
+#ADMIN_USER=madmin ; usermod -aG kvm $ADMIN_USER ; usermod -aG libvirt $ADMIN_USER
 ```
 
 ### dirty hack for glusterd-/libvirtd-/mount-issues on boot up
 
 ```
-# with following mount option in /etc/fstab, only unsafe migration is possible: 
-localhost:gv0 /tsp0 glusterfs defaults,_netdev,x-systemd.requires=glusterd.service,x-systemd.automount 0 0
+echo "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0  # do not mount /tsp0 automatically"  >> /etc/fstab
 
-# so dirty hack:
-echo "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0"  >> /etc/fstab
-
-vi /usr/lib/systemd/system/libvirtd.service
-  After=glusterd.service
-  ExecStartPre=mount /tsp0
-
+# mount /tsp0/ before libvirtd will be started :
+FI=/usr/lib/systemd/system/libvirtd.service
+SUB="ExecStartPre=mount /tsp0"
+grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
+# unmount /tsp0 after libvirtd is stopped :
+SUB="ExecStopPost=umount /tsp0"
+grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
+# start libvirtd after glusterd :
+SUB=After=glusterd.service
+grep -q "${SUB}" $FI || sed -i "/\[Unit\]/a ${SUB}" $FI
 systemctl daemon-reload
-```
 
-### glusterfs-client (only for systems which works as gluster client)
+systemctl restart libvirtd
+df -h | grep tsp0
+
 
 ```
-systemctl disable --now glusterd
-# Einträge in /usr/lib/systemd/system/libvirtd.service können bleiben (see dirty hack)
-systemctl stop libvirtd
-umount /tsp0
-vi /etc/fstab
-  # replace: "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0"
-  # with   : "arm1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=arm2 0 0"
-systemctl start libvirtd
-ls /tsp0
-``` 
 
 ### create script for networks and pools creation (can also be used in further installations)
 
@@ -296,59 +283,112 @@ chmod a+x /tsp0/scripts/kc-virt-init
 /tsp0/scripts/kc-virt-init
 ```
 
+### create test VM
+
+```
+mkdir /xxx
+FI=/xxx/test.yml
+
+cat <<'EOF' >$FI
+type: kvm
+kvm:
+  cloud_image: https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img
+  image_name: ubuntu-22.04-server-arm64
+  vol-pool:
+    name: tsp0-images
+    target: /tsp0-images
+  size: 5G
+  virt-install:
+    - --memory 2048
+    - --vcpus 2
+    - --os-variant ubuntu22.04
+    - --network bridge=lan-net,model=virtio
+cloud-config:
+  packages:
+    - qemu-guest-agent
+  runcmd:
+    - - systemctl
+      - enable
+      - '--now'
+      - qemu-guest-agent.service
+  chpasswd:
+    expire: false
+    list: |
+      root:mypassword
+  hostname: test
+  users:
+    - name: root
+      ssh_pwauth: true
+      lock-passwd: false
+      ssh_authorized_keys:
+        - '<PUB_KEY>'
+  timezone: Europe/Berlin
+EOF
+PUB_KEY=$( cat /root/.ssh/id_ed25519.pub )
+sed -i "s|<PUB_KEY>|${PUB_KEY}|g" $FI
+/opt/kc/bin/kc-dc provide test $FI
+/opt/kc/bin/kc-dc ip      test
+#/opt/kc/bin/kc-dc delete  test
+```
+
 ### virtnbdbackup
 
 https://github.com/abbbi/virtnbdbackup
 
 ```
+# update:
 # apt list --installed | grep virtnbdbackup
 # apt-get purge virtnbdbackup
-#VERSION="1.9.51-1"
-VERSION="2.9-1"
+VERSION="2.10-1"
 wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v${VERSION%-*}/virtnbdbackup_${VERSION}_all.deb
 dpkg --force-depends -i /tmp/vnb.deb
 apt --fix-broken install -y
-# append lines:
-/var/tmp/virtnbdbackup.* rw,
-/var/tmp/backup.* rw,
-in:
-vi /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
-vi /etc/apparmor.d/local/abstractions/libvirt-qemu
-vi /etc/apparmor.d/local/usr.sbin.libvirtd
-systemctl restart apparmor
-systemctl status  apparmor
+# see: https://github.com/abbbi/virtnbdbackup/issues/7
+# and: https://gist.github.com/juliyvchirkov/663eb6f5c18600a7414528beee6a7f3a#file-kvmbackup-sh
+## append lines:
+#/var/tmp/virtnbdbackup.* rw,
+#/var/tmp/backup.* rw,
+#in:
+#vi /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
+#vi /etc/apparmor.d/local/abstractions/libvirt-qemu
+#vi /etc/apparmor.d/local/usr.sbin.libvirtd
+#systemctl restart apparmor
+#systemctl status  apparmor
 #
-rm -rvf /test-backup
+# test:
+rm -rvf /src/var/test-backup
 mkdir -p /test-backup
 DOMAIN=test
-virtnbdbackup  -d $DOMAIN -l auto -o /test-backup
-rm -rvf /test-backup
+virtnbdbackup  -d $DOMAIN -l auto -o /src/var/test-backup
+rm -rvf /src/var/test-backup
+/opt/kc/bin/kc-dc delete test
 ```
 
-### install netdata
-
-https://wiki.crowncloud.net/?how_to_Install_netdata_monitoring_tool_ubuntu_22_04
+### unmask apparmor?????
 
 ```
-apt-get install -y netdata
-vi /etc/netdata/netdata.conf # bind socket ip
-# firefox <ip>:19999
-systemctl enable --now netdata
-systemctl status  netdata
-
+# TODO: who masks????
+virsh capabilities | grep -C 3 secmodel
+aa-status
+systemctl status apparmor
+systemctl unmask apparmor
+systemctl start  apparmor
+systemctl status apparmor
+aa-status
 ```
 
-### create ssh keys for kvm's communication
+#### create config for kvmc utils
 
 ```
-ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C  gluster
-cat .ssh/id_ed25519.pub >> .ssh/authorized_keys
-echo "StrictHostKeyChecking=no"     >  /root/.ssh/config
-echo "UserKnownHostsFile=/dev/null" >> /root/.ssh/config
-# scp /root/.ssh/* root@arm2:/root/.ssh
-sed -i "s|#PasswordAuthentication yes|PasswordAuthentication no|" /etc/ssh/sshd_config
-systemctl restart sshd
+mkdir -p /tsp0/config
+echo "KC_GLUSTER_ACTIVE=true"   > /tsp0/config/gluster.conf
+echo "KC_GLUSTER_VOLUME=gv0"   >> /tsp0/config/gluster.conf
+echo "$(hostname)"              > /tsp0/config/hosts.conf
+
+kvmc ls
+kvmc status
 ```
+
 
 # Administration
 
@@ -357,12 +397,12 @@ systemctl restart sshd
 ### dist-upgrade
 
 ```
-# @arm2: (cold-standhy)
+# @arm2: (hot-standhy)
 kvmc status
 kvmc ls
 apt-get update ; apt-get autoremove ; apt-get dist-upgrade
 init 6
-# change the productive node. migrate VMs from arm1 to arm2
+# change the production node. migrate VMs from arm1 to arm2
 kvmc --node=arm1 mig arm2
 ```
 
@@ -385,13 +425,6 @@ virsh domstate $DOM
 virsh domtime  $DOM
 virsh define $DOM /tsp0/sync/xml/kvm3/wws.xml
 virsh domrename <old> <new>
-```
-
-### install qemu-guest-agent
-
-```
-apt-get install -y qemu-guest-agent
-# todo: disable cloud-init
 ```
 
 ### resize partition of a cloud-init based VM
@@ -471,6 +504,7 @@ kc-backup backup $DOM
 kc-backup info   $DOM
 kc-backup reset  $DOM
 kc-backup reset --force-restart $DOM  # stop VM and remove bitmaps within image
+kc-backup restore test
 ```
 
 ### Initialize first backup device
@@ -534,6 +568,10 @@ cryptsetup luksClose $DEV $NAME
 
 ### general
 ```
+#
+# Replica 2 volumes are prone to split-brain. Use Arbiter or Replica 3 to avoid this.
+# See: http://docs.gluster.org/en/latest/Administrator-Guide/Split-brain-and-ways-to-deal-with-it/.
+#
 kcvmc status
 glusterd -V
 gluster volume status

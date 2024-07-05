@@ -118,7 +118,7 @@ _gluster_check() {
   count=0
   for i in $list ; do count=count+${i} ; done
   if [ "$count" != "0" ] ; then
-    echo "gluster not in sync (entries=$count)"
+    echo "gluster not in sync (entries=$count) !!!"
     return 1
   fi
   return 0
@@ -223,10 +223,10 @@ _mig() {
     echo "skipping coldstby domain <$domain>"
     return 0
   fi
-  if [ "$gluster_state" != "0" ] ; then
-    echo "error: gluster error!"
-    return 1
-  fi
+  #if [ "$gluster_state" != "0" ] ; then
+  #  echo "error: gluster error!"
+  #  return 1
+  #fi
   #_rem_virsh $target undefine "[${domain}:${target}]" 2>/dev/null
   _rem_virsh $node   migrate --live $domain --persistent --undefinesource --verbose  qemu+ssh://root@${target}/system
   #_copyxml  "${target}" "${domain}" "${node}" "[${domain}:${node}]"

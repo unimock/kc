@@ -288,10 +288,6 @@ if [ "$CMD" = "restore" ] ; then
     _umount
     exit 1
   fi
-  kvmc --domain=${VMB} up
-  rm -rvf  ${KC_TSP_DIR}/sync/backup/${VMB}
-  mkdir -p ${KC_TSP_DIR}/sync/backup/${VMB}
-  rm -f    ${KC_TSP_DIR}/sync/backup/${VMB}.conf
   _umount
   exit 0
 fi
@@ -302,25 +298,20 @@ if [ "$CMD" = "backup" ] ; then
   # check for backup device
   if [ "${VMB}" = "" ] ; then # only for complete backup
     #
-    # backup rfs-changes
+    # collect rfs-changes
     #
     for host in $KC_BACKUP_NODES ; do
       mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-      _ssh $host "rsync -av --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+      echo "###############################################################################"
+      echo "# collect rfs-backup from node=<$host> (defined in /opt/kc/etc/rfs-changes)"
+      _ssh $host "rsync -av --delete --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
     done
-    rsync -av ${KC_TSP_DIR}/rfs-backup/ $MPOINT/$KC_BACKUP_AREA/rfs-backup
-    #
-    # backup ISOs
-    #
-    if [ -d  ${KC_TSP_DIR}/ISOs ] ; then
-      mkdir -p $MPOINT/$KC_BACKUP_AREA/ISOs
-      rsync -av --delete ${KC_TSP_DIR}/ISOs/   $MPOINT/$KC_BACKUP_AREA/ISOs
+    echo "###############################################################################"
+    echo "# backup ${KC_TSP_DIR} content (defined in ${KC_TSP_DIR}/config/backup-content.conf"
+    echo "###############################################################################"
+    if [ -f ${KC_TSP_DIR}/config/backup-content.conf ] ; then
+       rsync -avr --delete --files-from=${KC_TSP_DIR}/config/backup-content.conf  ${KC_TSP_DIR} $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
     fi
-    #
-    # backup kc config
-    #
-    mkdir -p $MPOINT/$KC_BACKUP_AREA/config
-    rsync -av ${KC_TSP_DIR}/config/ $MPOINT/$KC_BACKUP_AREA/config
   fi
   #
   # backup vms

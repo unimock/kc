@@ -309,6 +309,7 @@ if [ "$CMD" = "backup" ] ; then
     echo "###############################################################################"
     echo "# backup ${KC_TSP_DIR} content (defined in ${KC_TSP_DIR}/config/backup-content.conf"
     echo "###############################################################################"
+    mkdir -p $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
     if [ -f ${KC_TSP_DIR}/config/backup-content.conf ] ; then
        rsync -avr --delete --files-from=${KC_TSP_DIR}/config/backup-content.conf  ${KC_TSP_DIR} $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
     fi

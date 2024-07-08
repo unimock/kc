@@ -50,6 +50,8 @@ umount /mnt
 
 ### kvmc cluster node installation 
 
+preparation
+
 ```
 #
 # install kvmc
@@ -64,7 +66,11 @@ kvmc install
 #
 wget -O /usr/local/bin/md-exec https://raw.githubusercontent.com/unimock/addapps/main/md-exec
 chmod a+x /usr/local/bin/md-exec
+```
 
+# installation (install-complete)
+
+```install-complete
 # execute install-xxx sections below
 md-exec /opt/kc/README.md run install-base      # executes section install-base below
 md-exec /opt/kc/README.md run install-glusterd
@@ -72,11 +78,11 @@ md-exec /opt/kc/README.md run install-libvirtd
 md-exec /opt/kc/README.md run install-virtnbdbackup
 md-exec /opt/kc/README.md run install-kvmc-config
 md-exec /opt/kc/README.md run install-dist-upgrade
-init 6
-md-exec /opt/kc/README.md run test-vm-backup
+#init 6
+#md-exec /opt/kc/README.md run test-vm-backup
 ```
 
-## installation
+## installation (install-base)
 
 ```install-base
 apt-get purge -y snapd
@@ -122,11 +128,11 @@ aa-status ; systemctl status apparmor
 timedatectl status
 ```
 
-### glusterfs-server
+### glusterfs-server (install-glusterd)
 
 https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-04/
 
-```inst-glusterd
+```install-glusterd
 # format NVMe Storage
 lsblk
 DEV="/dev/nvme0n1"
@@ -160,7 +166,7 @@ df -h | grep "/tsp0"
 umount /tsp0
 ```
 
-### kvm/libvirt
+### kvm/libvirt (install-libvirtd)
 
 https://www.linuxtechi.com/how-to-install-kvm-on-ubuntu-22-04/
 
@@ -215,7 +221,7 @@ chmod a+x /tsp0/scripts/kc-virt-destroy
 ```
 
 
-### virtnbdbackup
+### virtnbdbackup (install-virtnbdbackup)
 
 https://github.com/abbbi/virtnbdbackup
 
@@ -242,7 +248,7 @@ systemctl start  apparmor
 systemctl status apparmor
 ```
 
-#### create config for kvmc utils
+#### create config for kvmc utils (install-kvmc-config)
 
 ```install-kvmc-config
 mkdir -p /tsp0/config
@@ -254,14 +260,15 @@ kvmc ls
 kvmc status
 ```
 
-#### dist-upgrade
+#### dist-upgrade (install-dist-upgrade)
 ```install-dist-upgrade
+export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get dist-upgrade -y
 apt-get autoremove -y
 ```
 
-### tests
+### tests (test-vm-backup)
 
 ```test-vm-backup
 systemctl status apparmor

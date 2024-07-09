@@ -72,7 +72,7 @@ chmod a+x /usr/local/bin/md-exec
 
 ```install-complete
 # execute install-xxx sections below
-md-exec /opt/kc/README.md run install-base      # executes section install-base below
+md-exec /opt/kc/README.md run install-base
 md-exec /opt/kc/README.md run install-glusterd
 md-exec /opt/kc/README.md run install-libvirtd
 md-exec /opt/kc/README.md run install-virtnbdbackup
@@ -274,7 +274,6 @@ apt-get autoremove -y
 systemctl status apparmor
 df -h | grep /tsp0
 kvmc ls
-
 #
 # create a test VM
 #
@@ -286,53 +285,59 @@ sed -i "s|<PUB_KEY>|${PUB_KEY}|g" $FI
 /opt/kc/bin/kc-dc provide test    $FI
 /opt/kc/bin/kc-dc ip      test
 kvmc ls
-
 #
 # test virtnbdbackup:
 #
 mkdir -p /srv/var/test-backup
 virtnbdbackup  -d test -l auto -o /srv/var/test-backup
 /opt/kc/bin/kc-dc delete test
-
+#
 virtnbdrestore -D -N test -i /srv/var/test-backup -o /tsp0/images
 kvmc ls
 kvmc --domain=test up
 rm -rvf /srv/var/test-backup
-
 ```
 
-## add arm3 to existing cluster
+## add a new kvm node (arm3) to existing cluster from (arm1) (admin-add-node)
 
-```
-ssh arm3
-kvmc ls
-kvmc rm complete
-/tsp0/scripts/kc-virt-destroy
-systemctl stop libvirt-guests
-systemctl stop libvirtd
-ls /tsp0
-gluster volume stop gv0
-gluster volume delete gv0
-systemctl stop glusterd
-rm -Rvf /srv/.bricks/gv0
-systemctl start glusterd
-# jetzt am arm2:
-# add brick siehe unten
-
-
-
-
-# 
-# dann config am arm2 um arm3 erweitern:
-ssh arm2
+```admin-add-node
+PEER=arm3
+#
+# destroy brick @ $PEER
+#
+ssh $PEER kvmc ls
+ssh $PEER kvmc rm complete
+ssh $PEER systemctl stop libvirt-guests
+ssh $PEER /tsp0/scripts/kc-virt-destroy
+ssh $PEER systemctl stop libvirtd
+ssh $PEER ls /tsp0
+ssh $PEER "echo y | gluster volume stop gv0"
+ssh $PEER "echo y | gluster volume delete gv0"
+ssh $PEER systemctl stop glusterd
+ssh $PEER rm -Rvf /srv/.bricks/gv0
+ssh $PEER systemctl start glusterd
+#
+# add $PEER gluster brick
+#
+REPLICA=3
+gluster peer probe ${PEER}
+gluster peer status
+gluster volume status
+gluster volume add-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0
+gluster volume status
+gluster volume info   gv0
+gluster volume heal   gv0 info
+#
+# update config for now kvm and copy to new $PEER kvm
+#
 vi /etc/hosts
-NODE=arm3
-scp /etc/hosts $NODE:/etc/
-scp -r /root/.ssh       $NODE:/root
-scp /root/.bash_aliases $NODE:/root
+scp /etc/hosts $PEER:/etc/
+scp -r /root/.ssh       $PEER:/root
+scp /root/.bash_aliases $PEER:/root
 vi /tsp0/config/hosts.conf
-ssh $NODE /tsp0/scripts/kc-virt-init
-ssh $NODE kvmc ls
+ssh $PEER cat /tsp0/scripts/kc-virt-init # wait for gluster heal
+ssh $PEER /tsp0/scripts/kc-virt-init
+ssh $PEER kvmc ls
 ```
 
 # Administration

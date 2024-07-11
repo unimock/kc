@@ -380,7 +380,7 @@ if [ "$CMD" = "backup" ] ; then
       if [ "$opt_simul" = "1" ] ; then
         echo  virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
       else
-        virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
+        virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -S -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
         ret=$?
         if [ "$ret" != "0" ] ; then
           echo "error: virtnbdbackup returns <$ret> on virnbdbackup for domain <$DOM>"

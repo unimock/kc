@@ -362,9 +362,12 @@ kvm:
   size: 5G
   virt-install:
     - --memory 2048
-    - --vcpus 2
+    - --vcpus=2
     - --os-variant ubuntu22.04
     - --network bridge=lan-net,model=virtio
+    # RK3588 (ubuntu-24.04) issues:
+    #- --boot=loader=/usr/share/AAVMF/AAVMF_CODE.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/AAVMF/AAVMF_VARS.fd,loader_secure=no
+    #- --vcpus=4,cpuset=0-3
 cloud-config:
   packages:
     - qemu-guest-agent

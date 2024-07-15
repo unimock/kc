@@ -220,7 +220,11 @@ kvmc ls
 #
 mkdir -p /xxx
 FI=/xxx/test.yml
-md-exec /opt/kc/INSTALL.md dump test-domain-yml >$FI
+if [ "$(dpkg --print-architecture)" = "arm64" -a "$(lsb_release -s -r 2>/dev/null)" = "24.04" ] ; then
+  md-exec /opt/kc/INSTALL.md dump test-arm-u24-yml >$FI
+else
+  md-exec /opt/kc/INSTALL.md dump test-domain-yml  >$FI
+fi
 PUB_KEY=$( cat /root/.ssh/id_ed25519.pub )
 sed -i "s|<PUB_KEY>|${PUB_KEY}|g" $FI
 /opt/kc/bin/kc-dc provide test    $FI
@@ -365,9 +369,44 @@ kvm:
     - --vcpus=2
     - --os-variant ubuntu22.04
     - --network bridge=lan-net,model=virtio
-    # RK3588 (ubuntu-24.04) issues:
-    #- --boot=loader=/usr/share/AAVMF/AAVMF_CODE.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/AAVMF/AAVMF_VARS.fd,loader_secure=no
-    #- --vcpus=4,cpuset=0-3
+
+cloud-config:
+  packages:
+    - qemu-guest-agent
+  runcmd:
+    - - systemctl
+      - enable
+      - '--now'
+      - qemu-guest-agent.service
+  chpasswd:
+    expire: false
+    list: |
+      root:mypassword
+  hostname: test
+  users:
+    - name: root
+      ssh_pwauth: true
+      lock-passwd: false
+      ssh_authorized_keys:
+        - '<PUB_KEY>'
+  timezone: Europe/Berlin
+```
+
+```test-arm-u24-yml
+type: kvm
+kvm:
+  cloud_image: https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img
+  image_name: ubuntu-22.04-server-arm64
+  vol-pool:
+    name: tsp0-images
+    target: /tsp0/images
+  size: 5G
+  virt-install:
+    - --memory 2048
+    - --vcpus=2,cpuset=0-3
+    - --os-variant ubuntu22.04
+    - --network bridge=lan-net,model=virtio
+    - --boot=loader=/usr/share/AAVMF/AAVMF_CODE.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/AAVMF/AAVMF_VARS.fd,loader_secure=no
 cloud-config:
   packages:
     - qemu-guest-agent

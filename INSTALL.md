@@ -68,7 +68,7 @@ https://www.howtoforge.com/how-to-install-and-configure-glusterfs-on-ubuntu-22-0
 IS_GLUSTER_PEER=1
 apt-get install -y glusterfs-server
 mkdir -p /tsp0
-if [ "${IS_GLUSTER_PEER}" = "1"] ; then
+if [ "${IS_GLUSTER_PEER}" = "1" ] ; then
   # format NVMe Storage
   lsblk
   DEV="/dev/nvme0n1"

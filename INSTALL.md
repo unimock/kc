@@ -347,7 +347,7 @@ grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
 SUB="ExecStopPost=umount /tsp0"
 grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
 # start libvirtd after glusterd :
-SUB=After=glusterd.service
+SUB="After=glusterd.service"
 grep -q "${SUB}" $FI || sed -i "/\[Unit\]/a ${SUB}" $FI
 systemctl daemon-reload
 exit

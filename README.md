@@ -355,10 +355,11 @@ ssh $PEER ls /tsp0
 
 gluster peer status
 gluster volume heal gv0 info
-gluster volume remove-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0 force
+echo y | gluster volume remove-brick gv0 replica ${REPLICA} ${PEER}:/srv/.bricks/gv0 force
 gluster volume info gv0
-gluster peer detach ${PEER}
+echo y | gluster peer detach ${PEER}
 gluster peer status
+kvmc status
 ```
 
 #### re-create brick at PEER

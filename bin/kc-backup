@@ -215,9 +215,10 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
   fi
   echo "##############################################"
   echo "# check if virtnbd bitmaps are in used images:"
+  bitmaps=""
   for i in ${w_disks} ; do
     i=${i#*:}
-    bitmaps=$( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')
+    bitmaps="$bitmaps $( qemu-img info -U $i  | grep " name: virtnbdbackup" | sed 's| name: ||g')"
   done
   if [ "$bitmaps" != "" ] ; then
     if [ "$CMD" = "reset" -a "$opt_force_restart" = "1" ] ; then
@@ -228,7 +229,8 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
       kvmc --domain=${w_domain} up
     else
       echo " bitmaps exists in libvirt domain"
-      echo "   call with parameter --force-restart"
+      echo "   call with parameter --force-restart:"
+      echo "kc-backup reset --force-restart ${w_domain}"
       echo " or do it manually:"
       echo "kvmc --domain=${w_domain} down"
       for b in $bitmaps ; do

@@ -396,3 +396,18 @@ gluster volume info   gv0
 gluster volume heal   gv0 info
 ```
 
+# known issues
+
+```
+ # multiple uuids
+ vi /etc/libvirt/libvirtd.conf  # host_uuid_source = "machine-id"
+
+ # apparmor
+apt install apparmor-utils
+aa-status
+aa-complain /etc/apparmor.d/usr.sbin.libvirtd
+aa-enforce /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper
+systemctl restart libvirtd
+aa-status
+mount /tsp0/
+```

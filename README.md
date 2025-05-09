@@ -399,10 +399,14 @@ gluster volume heal   gv0 info
 # known issues
 
 ```
- # multiple uuids
+ #
+ # Live Migration Failure With Error "same uuid":
+ #
  vi /etc/libvirt/libvirtd.conf  # host_uuid_source = "machine-id"
 
- # apparmor
+ #
+ # Live Migration Failure With Error "Unable to find security driver for model apparmor"
+ #
 apt install apparmor-utils
 aa-status
 aa-complain /etc/apparmor.d/usr.sbin.libvirtd

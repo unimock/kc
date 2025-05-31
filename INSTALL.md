@@ -170,7 +170,7 @@ https://github.com/abbbi/virtnbdbackup
 # update:
 # apt list --installed | grep virtnbdbackup
 # apt-get purge -y virtnbdbackup
-VERSION="2.28-1"
+VERSION="2.29-1"
 wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v${VERSION%-*}/virtnbdbackup_${VERSION}_all.deb
 dpkg --force-depends -i /tmp/vnb.deb
 apt --fix-broken install -y

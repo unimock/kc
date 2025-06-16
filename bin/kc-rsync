@@ -22,7 +22,7 @@ _usage()
 #############################
 _mount()
 {
-  FI=${KC_TSP_DIR}/config/backup-uuids.conf
+  uuid_list=$(  grep -o '^[^#]*' ${KC_TSP_DIR}/config/backup-uuids.conf )
   if [ ! -e $FI ] ; then
     echo "error: missing uuid definition file <$FI>"
     sf_set_error
@@ -33,7 +33,7 @@ _mount()
     mkdir -p $MPOINT
   fi
   _mount=0
-  for UUID in $( cat $FI ) ; do
+  for UUID in ${uuid_list} ; do
     DEV=`blkid  -U $UUID`
     ret=$?
     if [ "$ret" = "0" ] ; then

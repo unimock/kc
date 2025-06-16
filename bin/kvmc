@@ -303,7 +303,7 @@ _backup() {
   # mount backup device
   #
   if [[ "$cmd" == "mount" || "$cmd" == "show" || "$cmd" == "delete" ]] ; then
-    FI=${KC_TSP_DIR}/config/backup-uuids.conf
+    uuid_list=$( grep -o '^[^#]*' ${KC_TSP_DIR}/config/backup-uuids.conf )
     if [ ! -e $FI ] ; then
       echo "error: missing uuid definition file <$FI>"
       return 1
@@ -313,7 +313,7 @@ _backup() {
       mkdir -p $MPOINT
     fi
     _mount=0
-    for UUID in $( cat $FI ) ; do
+    for UUID in ${uuid_list} ; do
       DEV=`blkid  -U $UUID`
       ret=$?
       if [ "$ret" = "0" ] ; then

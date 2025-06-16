@@ -9,6 +9,14 @@ NAME="kvm-bup"
 KC_BACKUP_EXCLUDE=""
 KC_BACKUP_NODES=""
 
+# cryptsetup luksOpen /dev/sda  kvm-bup
+# mkdir -p /backup
+# ls /backup/
+# mount /dev/mapper/kvm-bup /backup
+# cryptsetup luksClose kvm-bup
+#
+
+
 DEV=""
 if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
   echo "error: missing definition file <${KC_TSP_DIR}/config/kc-backup.conf>."
@@ -55,12 +63,12 @@ _ssh() {
 }
 #############################
 _check_for_backup_device() {
-  FI=${KC_TSP_DIR}/config/backup-uuids.conf
+  uuid_list=$( grep -o '^[^#]*' ${KC_TSP_DIR}/config/backup-uuids.conf )
   if [ ! -e $FI ] ; then
     return 1
   fi
   for host in $KC_BACKUP_NODES ; do
-    for UUID in $( cat $FI ) ; do
+    for UUID in ${uuid_list} ; do
       DEV=`_ssh $host blkid  -U $UUID`
       ret=$?
       if [ "$ret" = "0" ] ; then
@@ -79,8 +87,8 @@ _mount() {
     mkdir -p $MPOINT
   fi
   _mount=0
-  FI=${KC_TSP_DIR}/config/backup-uuids.conf
-  for UUID in $( cat $FI ) ; do
+  uuid_list=$( grep -o '^[^#]*' ${KC_TSP_DIR}/config/backup-uuids.conf )
+  for UUID in ${uuid_list} ; do
     DEV=`blkid  -U $UUID`
     ret=$?
     if [ "$ret" = "0" ] ; then

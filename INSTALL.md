@@ -170,11 +170,11 @@ https://github.com/abbbi/virtnbdbackup
 # update:
 # apt list --installed | grep virtnbdbackup
 # apt-get purge -y virtnbdbackup
-VERSION="2.30-1"
+VERSION="2.32-1"
 wget -O /tmp/vnb.deb https://github.com/abbbi/virtnbdbackup/releases/download/v${VERSION%-*}/virtnbdbackup_${VERSION}_all.deb
 dpkg --force-depends -i /tmp/vnb.deb
 apt --fix-broken install -y
-
+virtnbdbackup --version
 cat <<EOF > /etc/apparmor.d/local/abstractions/libvirt-qemu
 /var/tmp/virtnbdbackup.* rw,
 /var/tmp/backup.* rw,

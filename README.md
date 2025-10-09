@@ -169,6 +169,8 @@ virsh domrename <old> <new>
 DOM="ubuntu-test"
 kvmc --domain=$DOM list images
 IMG=/tsp0/images/ubuntu-test.qcow
+kvmc --domain=$DOM down
+qemu-img info   $IMG
 qemu-img resize $IMG +5G
 qemu-img info   $IMG
 modprobe nbd max_part=8

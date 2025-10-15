@@ -471,6 +471,10 @@ if [ "$CMD" = "backup" ] ; then
       fi
       DAT=$(date +"%Y-%m-%d %H:%M:%S")
       sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${disk_usage}]\n/" ${FI}
+      printf "\n\n## previous backups:\n\n" >> ${MD_FILE}
+      printf "\`\`\`\n"                     >> ${MD_FILE}
+      head -n 50 $FI                        >> ${MD_FILE}
+      printf "\`\`\`\n"                     >> ${MD_FILE}
       if [ "$return_error" = "0" ] ; then
 	dstate="✅"
       else

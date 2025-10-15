@@ -1,26 +1,53 @@
+
 _sf_error=0
 _sf_start=0
 
-sf_start() {
+sf_start()
+{
  _sf_error=0
  _sf_start=$(date +%s)
 }
 
-sf_set_error() {
-  _sf_error=1
+
+sf_set_error()
+{
+  if [ "$1" != "" ] ; then 
+    _sf_error=$1
+  else
+    _sf_error=1
+  fi
+}
+sf_set_warning()
+{
+  if [  ${_sf_error} = "0" -o ${_sf_error} = "254" ] ; then # overrule OK and UPDATE
+    _sf_error=255
+  fi
+}
+sf_set_update()
+{
+  if [ ${_sf_error} = "0" -a  ] ; then # overrule only OK
+    _sf_error=254
+  fi
 }
 
-sf_end() {
+sf_end()
+{
   _sf_end=$(date +%s)
   _sf_secs=$((_sf_end-_sf_start))
-  _sf_start=$( date --date @${_sf_start} +"%H:%M:%S" )
+  #
+  _sf_start=$( date --date @${_sf_start} +"%H:%M:%S" ) 
   _sf_end=$( date --date @${_sf_end} +"%H:%M:%S" )
-  _sf_duration=$( printf '%dh:%dm:%ds' $(($_sf_secs/3600)) $(($_sf_secs%3600/60)) $(($_sf_secs%60)) )
-  tim="start=${_sf_start} end=${_sf_end} duration=${_sf_duration}"
-  if [ "${_sf_error}" = "0" ] ; then
-    echo "#result=OK $tim"
+  _sf_duration=$( printf '%02d:%02d:%02d' $(($_sf_secs/3600)) $(($_sf_secs%3600/60)) $(($_sf_secs%60)) ) 
+  tim="start=${_sf_start} end=${_sf_end} duration=${_sf_duration} rc=${_sf_error}"
+  if   [ "${_sf_error}" = "255" ] ; then
+    echo "#result=WARNING $tim"
+  elif [ "${_sf_error}" = "254" ] ; then
+    echo "#result=UPDATES $tim"
+  elif [ "${_sf_error}" = "0" ] ; then
+      echo "#result=OK $tim"
   else
     echo "#result=ERROR $tim"
   fi
-  exit ${_sf_error}
 }
+
+

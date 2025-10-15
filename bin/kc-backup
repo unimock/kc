@@ -16,6 +16,11 @@ KC_BACKUP_NODES=""
 # cryptsetup luksClose kvm-bup
 #
 
+return_error=0
+
+MD_FILE=/tmp/kc-backup.md
+LOG_FILE=/tmp/kc-backup.log
+rm -f ${MD_FILE} ${LOG_FILE}
 
 DEV=""
 if [ ! -f "${KC_TSP_DIR}/config/kc-backup.conf" ] ; then
@@ -293,7 +298,6 @@ if [ "$CMD" = "reset" -o "$CMD" = "info" ] ; then
   echo  rm -rvf $MPOINT/$KC_BACKUP_AREA/domains/${w_domain}
   echo "/opt/kc/bin/kc-backup umount"
   echo "##############################################"
-
   _umount
   exit 0
 fi
@@ -323,50 +327,70 @@ if [ "$CMD" = "backup" ] ; then
     #
     for host in $KC_BACKUP_NODES ; do
       mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
-      echo "###############################################################################"
-      echo "# collect rfs-backup from node=<$host> (defined in /opt/kc/etc/rfs-changes)"
-      _ssh $host "rsync -av --delete --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"
+      echo "###############################################################################"                      2>&1 | tee -a ${LOG_FILE}
+      echo "# collect rfs-backup from node=<$host> (defined in /opt/kc/etc/rfs-changes)"                          2>&1 | tee -a ${LOG_FILE}
+      _ssh $host "rsync -av --delete --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"    2>&1 | tee -a ${LOG_FILE}
     done
-    echo "###############################################################################"
-    echo "# backup ${KC_TSP_DIR} content (defined in ${KC_TSP_DIR}/config/backup-content.conf"
-    echo "###############################################################################"
+    echo "###############################################################################"                        2>&1 | tee -a ${LOG_FILE}
+    echo "# backup ${KC_TSP_DIR} content (defined in ${KC_TSP_DIR}/config/backup-content.conf"                    2>&1 | tee -a ${LOG_FILE}
+    echo "###############################################################################"                        2>&1 | tee -a ${LOG_FILE}
     mkdir -p $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
     if [ -f ${KC_TSP_DIR}/config/backup-content.conf ] ; then
-       rsync -avr --delete --files-from=${KC_TSP_DIR}/config/backup-content.conf  ${KC_TSP_DIR} $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
+       rsync -avr --delete --files-from=${KC_TSP_DIR}/config/backup-content.conf  ${KC_TSP_DIR} $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR} 2>&1 | tee -a ${LOG_FILE}
     fi
   fi
   #
   # backup vms
   #
+  rm -f /tmp/vb.log
   mkdir -p ${KC_TSP_DIR}/sync/backup
-  echo "===================================================================="
+  echo "===================================================================="                                     2>&1 | tee -a ${LOG_FILE}
+  disk_usage=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
+  DAT=$(date +"%Y-%m-%d %H:%M:%S")
+  printf "\n# kc-backup\n\n"                                 >> ${MD_FILE}
+  printf "## general information:\n\n"                       >> ${MD_FILE}
+  printf "* start time    : %s\n" "${DAT}"                   >> ${MD_FILE}
+  printf "* current device: %s\n" "${INFO_HD_NAME}"          >> ${MD_FILE}
+  printf "* disk usage    : %s\n" "${disk_usage}"            >> ${MD_FILE}
+  printf "\n## kvm domains:\n\n"                             >> ${MD_FILE}
+  LINE="--------------------------------------------------------------"
+  MASK="|%2s|%-10s|%-10s|%-10s|%8s|%-10s|%3s|\n"
+  printf "$MASK" ""            "domain"       "state"        "host"         "duration"     "prev_dev"     "ret"         >> ${MD_FILE} 
+  printf "$MASK" "${LINE:0:2}" "${LINE:0:10}" "${LINE:0:10}" "${LINE:0:10}" "${LINE:0:8}"  "${LINE:0:10}" "${LINE:0:3}" >> ${MD_FILE}
   for host in $KC_BACKUP_NODES ; do
     if [ "$opt_node" != "" -a "$host" !=  "$opt_node" ] ; then
       continue
     fi
     vms=$( _virsh ${host} list --all --name )
     for DOM in $vms ; do
+      last_device=$( cat ${KC_TSP_DIR}/sync/backup/${DOM}.conf 2>/dev/null )
       if [[ "$VMB" == "" ]] ; then
 	# if domain is given as parameter, then do not evaluate KC_BACKUP_EXCLUDE
         #echo "KC_BACKUP_EXCLUDE=<$KC_BACKUP_EXCLUDE> DOM=<$DOM>"
         if [[ "$KC_BACKUP_EXCLUDE" == *" $DOM "* ]] ; then
-          echo "############################################################"
-          echo "# skipping domain <$DOM> because of KC_BACKUP_EXCLUDE"
-          echo "############################################################"
+          echo "############################################################"                                    2>&1 | tee -a ${LOG_FILE}
+          echo "# skipping domain <$DOM> because of KC_BACKUP_EXCLUDE"                                           2>&1 | tee -a ${LOG_FILE}
+          echo "############################################################"                                    2>&1 | tee -a ${LOG_FILE}
+	  dstate="⬜"
+          printf "$MASK" "${dstate}" "${DOM}" "KC_BACKUP_EXCLUDE" "${host}" "" "${last_device}" "" >> ${MD_FILE}
           continue
         fi
       fi
       if [[ ${DOM} == \[*:*[1-9]\] ]] ; then
+	dstate="⬜"
+	printf "$MASK" "${dstate}" "${DOM}" "FILTER"              "${host}" "" "${last_device}" "" >> ${MD_FILE}
         continue ;
       fi
       if [ "${VMB}" != "${DOM}" -a "${VMB}" != "" ] ; then
+	dstate="⬜"
+	printf "$MASK" "${dstate}" "${DOM}" "VMB!=DOM"            "${host}" "" "${last_device}" "" >> ${MD_FILE}
         continue
       fi
       state=$( _virsh ${host} domstate ${DOM} )
       _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
-      echo "####################################################"
-      echo "#  ${DOM} @ ${h} ($state) ${_DATE}"
-      echo "####################################################"
+      echo "####################################################"                                                2>&1 | tee -a ${LOG_FILE}
+      echo "#  ${DOM} @ ${h} ($state) ${_DATE}"                                                                  2>&1 | tee -a ${LOG_FILE}
+      echo "####################################################"                                                2>&1 | tee -a ${LOG_FILE}
       # Get list of disk names and image paths
       unset imgs ; declare -A imgs
       disc=""
@@ -375,40 +399,48 @@ if [ "$CMD" = "backup" ] ; then
       #
       # check for removal former backups from device, if new device detected
       #
-      last_device=$( cat ${KC_TSP_DIR}/sync/backup/${DOM}.conf 2>/dev/null )
-      echo "# last backup device   : <$last_device>"
-      echo "# current backup device: <${INFO_HD_NAME}>"
+      echo "# last backup device   : <$last_device>"                                                             2>&1 | tee -a ${LOG_FILE}
+      echo "# current backup device: <${INFO_HD_NAME}>"                                                          2>&1 | tee -a ${LOG_FILE}
       if [ "$last_device"  != "${INFO_HD_NAME}" ] ; then
-        echo "# full backup needed becaus of device changed, so cleaning up:"
-        echo "#  - directory <$MPOINT/$KC_BACKUP_AREA/domains/${DOM}>"
-        echo "#  - directory <${KC_TSP_DIR}/sync/backup/${DOM}>"
-        echo "#  - file <${KC_TSP_DIR}/sync/backup/${DOM}.conf>"
-        rm -rf   $MPOINT/$KC_BACKUP_AREA/domains/${DOM} 
-        mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/${DOM}
-        rm -rf   ${KC_TSP_DIR}/sync/backup/${DOM}
-        mkdir -p ${KC_TSP_DIR}/sync/backup/${DOM}
-        rm -f    ${KC_TSP_DIR}/sync/backup/${DOM}.conf
+        echo "# full backup needed becaus of device changed, so cleaning up:"                                    2>&1 | tee -a ${LOG_FILE}
+        echo "#  - directory <$MPOINT/$KC_BACKUP_AREA/domains/${DOM}>"                                           2>&1 | tee -a ${LOG_FILE}
+        echo "#  - directory <${KC_TSP_DIR}/sync/backup/${DOM}>"                                                 2>&1 | tee -a ${LOG_FILE}
+        echo "#  - file <${KC_TSP_DIR}/sync/backup/${DOM}.conf>"                                                 2>&1 | tee -a ${LOG_FILE}
+        rm -rf   $MPOINT/$KC_BACKUP_AREA/domains/${DOM}                                                          2>&1 | tee -a ${LOG_FILE}
+        mkdir -p $MPOINT/$KC_BACKUP_AREA/domains/${DOM}                                                          2>&1 | tee -a ${LOG_FILE}
+        rm -rf   ${KC_TSP_DIR}/sync/backup/${DOM}                                                                2>&1 | tee -a ${LOG_FILE}
+        mkdir -p ${KC_TSP_DIR}/sync/backup/${DOM}                                                                2>&1 | tee -a ${LOG_FILE}
+        rm -f    ${KC_TSP_DIR}/sync/backup/${DOM}.conf                                                           2>&1 | tee -a ${LOG_FILE}
       else
         if [ "$state"  = "shut off" ] ; then
-	  echo "##################################################"
-          echo "# skip incremental backup for shut off domain:  <$DOM>"
-          echo "##################################################"
+	  echo "##################################################"                                              2>&1 | tee -a ${LOG_FILE}
+          echo "# skip incremental backup for shut off domain:  <$DOM>"                                          2>&1 | tee -a ${LOG_FILE}
+          echo "##################################################"                                              2>&1 | tee -a ${LOG_FILE}
+	  dstate="🔃"
+	  printf "$MASK" "$dstate" "${DOM}" "${state}" "${host}" "" "${last_device}" "" >> ${MD_FILE}
 	  continue
 	fi
-        echo "# doing incremental, because no device change"
       fi
       mkdir -p ${KC_TSP_DIR}/sync/backup/${DOM}
       if [ "$opt_simul" = "1" ] ; then
         echo  virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
       else
-        virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -S -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM}
+	_start=$(date +%s)
+        virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -S -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM} 2>&1 | tee -a ${LOG_FILE}
         ret=$?
-        if [ "$ret" != "0" ] ; then
-          echo "error: virtnbdbackup returns <$ret> on virnbdbackup for domain <$DOM>"
+	_end=$(date +%s)
+	_secs=$((_end-_start))
+	duration=$( printf '%02d:%02d:%02d' $(($_secs/3600)) $(($_secs%3600/60)) $(($_secs%60)) )
+	if [ "$ret" = "0" ] ; then
+          dstate="✅"
+          printf "$MASK" "$dstate" "${DOM}" "${state}" "${host}" "${duration}" "${last_device}" $ret >> ${MD_FILE}
+	else
+          echo "error: virtnbdbackup returns <$ret> on virnbdbackup for domain <$DOM>"                          2>&1 | tee -a ${LOG_FILE}
+	  dstate="❌"
+	  printf "$MASK" "$dstate" "${DOM}" "${state}" "${host}" "${duration}" "${last_device}" $ret >> ${MD_FILE}
           sf_set_error
+	  return_error=1
 	  continue
-          #_umount
-          #exit 1
         fi
       fi
       # store backup device name
@@ -416,21 +448,19 @@ if [ "$CMD" = "backup" ] ; then
     done
   done
   echo "===================================================================="
-  df -h  $MPOINT
-  usage_pcent=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
+  disk_usage=$(df -h $MPOINT --output="pcent" | grep -v "Use" | sed "s| ||g" )
   if [ "$opt_simul" = "0" ] ; then
-    echo "##############################"
+    echo "##############################"                                                                        2>&1 | tee -a ${LOG_FILE}
     if [ "${VMB}" != "" ] ; then
-      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}/domains/${VMB}
+      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}/domains/${VMB}                                                       2>&1 | tee -a ${LOG_FILE}
     else
-      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}
+      tree -lhs ${MPOINT}/${KC_BACKUP_AREA}                                                                      2>&1 | tee -a ${LOG_FILE}
     fi
-    echo "##############################"
-    tree -lhs ${KC_TSP_DIR}/sync/backup/${VMB}
-    echo "##############################"
+    echo "##############################"                                                                        2>&1 | tee -a ${LOG_FILE}
+    tree -lhs ${KC_TSP_DIR}/sync/backup/${VMB}                                                                   2>&1 | tee -a ${LOG_FILE}
+    echo "##############################"                                                                        2>&1 | tee -a ${LOG_FILE}
   fi
-  _umount
-  date
+  _umount                                                                                                        2>&1 | tee -a ${LOG_FILE}
   if [ "${VMB}" = "" -a "$opt_simul" = "0" ] ; then # only for complete backup
     if [ -e ${KC_TSP_DIR}/config/kc-backup.conf ] ; then
       . ${KC_TSP_DIR}/config/kc-backup.conf
@@ -440,13 +470,19 @@ if [ "$CMD" = "backup" ] ; then
         touch ${FI}
       fi
       DAT=$(date +"%Y-%m-%d %H:%M:%S")
-      sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${usage_pcent}]\n/" ${FI}
-      subject="kc-backup @ `hostname`"
+      sed -i "1s/^/${DAT} ${INFO_HD_NAME} [${disk_usage}]\n/" ${FI}
+      if [ "$return_error" = "0" ] ; then
+	dstate="✅"
+      else
+        dstate="❌"
+      fi
+      subject="$dstate kc-backup @ `hostname`"
       swaks --to ${KC_BACKUP_TO} --from ${KC_BACKUP_FROM} \
             -s   ${KC_BACKUP_SMTP} \
             --header "Subject: $subject" \
-            --attach-type "text/plain" --attach-body @${FI} \
+            --attach-type "text/plain" --attach-body @${MD_FILE} \
             --attach-type "text/plain" --attach @${FI} \
+            --attach-type "text/plain" --attach @${LOG_FILE} \
             -S 2
     fi
   fi

@@ -323,6 +323,14 @@ systemctl stop   glusterd
 systemctl start  glusterd
 ```
 
+#### add an arbitor (amd1)
+
+```
+amd1: mkdir -p /srv/.bricks
+arm1: gluster volume add-brick  gv0 replica 3 arbiter 1  amd1://srv/.bricks/gv0 force
+arm1: gluster volume info
+```
+
 #### resolve split-brains
 
 ```

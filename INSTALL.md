@@ -10,6 +10,7 @@ md-exec /opt/kc/INSTALL.md run install-libvirtd
 md-exec /opt/kc/INSTALL.md run install-virtnbdbackup
 md-exec /opt/kc/INSTALL.md run install-kvmc-config
 md-exec /opt/kc/INSTALL.md run install-dist-upgrade
+md-exec /opt/kc/INSTALL.md run install-fixes
 #init 6
 #md-exec /opt/kc/INSTALL.md run test-vm-backup
 ```
@@ -160,7 +161,38 @@ else
   /tsp0/scripts/dirty-startup-hack
 fi
 ```
+### fixes
+```install-fixes
+# 1) Neustart von glusterd beendet die Bricks nicht mehr
+mkdir -p /etc/systemd/system/glusterd.service.d
+printf '[Service]\nKillMode=process\n' > /etc/systemd/system/glusterd.service.d/killmode.conf
+systemctl daemon-reload
+# 2) needrestart soll glusterd nie automatisch neu starten (nur falls needrestart installiert ist)
+[ -d /etc/needrestart/conf.d ] && \
+  echo 'push @{$nrconf{blacklist_rc}}, qr(^glusterd\.service$);' > /etc/needrestart/conf.d/glusterd.conf
+# 3) Automatische Updates aus, Paketlisten weiter täglich aktualisieren
+cp -a /etc/apt/apt.conf.d/20auto-upgrades /root/20auto-upgrades.bak 2>/dev/null                                                                                                                
+printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "0";\n' > /etc/apt/apt.conf.d/20auto-upgrades
+systemctl disable --now apt-daily-upgrade.timer
+# Danach auf jedem Knoten prüfen:
+systemctl show glusterd -p KillMode                  # erwartet: KillMode=process
+systemctl is-active glusterd; pgrep -a glusterfsd    # Brick läuft weiter, gleiche PID wie vorher
+needrestart -r l 2>/dev/null | grep -i gluster       # sollte nichts ausgeben
+systemctl is-enabled apt-daily-upgrade.timer         # erwartet: disabled
+apt-config dump | grep Unattended-Upgrade            # erwartet: "0"
+# 4) set options
+for o in performance.quick-read=off performance.read-ahead=off performance.io-cache=off \
+           performance.low-prio-threads=32 network.remote-dio=disable performance.strict-o-direct=on \
+           cluster.eager-lock=enable cluster.locking-scheme=granular \
+           cluster.shd-max-threads=8 cluster.shd-wait-qlength=10000 cluster.choose-local=off \
+           client.event-threads=4 server.event-threads=4 performance.client-io-threads=on \
+           network.ping-timeout=20 server.tcp-user-timeout=20 server.keepalive-time=10 \
+           server.keepalive-interval=2 server.keepalive-count=5; do
+      echo -n "$o: "; gluster volume set gv0 ${o%%=*} ${o#*=}
+done
+# Jede Zeile sollte volume set: success melden.
 
+```
 
 ### virtnbdbackup (install-virtnbdbackup)
 

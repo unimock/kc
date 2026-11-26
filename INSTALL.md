@@ -191,7 +191,26 @@ for o in performance.quick-read=off performance.read-ahead=off performance.io-ca
       echo -n "$o: "; gluster volume set gv0 ${o%%=*} ${o#*=}
 done
 # Jede Zeile sollte volume set: success melden.
+# 5) libvirtd dauerhaft laufen lassen (kein Idle-Timeout)
+md-exec /opt/kc/INSTALL.md run fix-libvirtd-timeout
+```
 
+**fix-libvirtd-timeout**: Ubuntu starts libvirtd socket-activated with `--timeout 120`,
+it exits after 2 minutes idle. On a dedicated KVM host this makes no sense, so libvirtd
+runs permanently. A restart of libvirtd does not affect running VMs.
+
+```fix-libvirtd-timeout
+FI=/etc/default/libvirtd
+if grep -q '^LIBVIRTD_ARGS=' $FI 2>/dev/null ; then
+  sed -i 's/^LIBVIRTD_ARGS=.*/LIBVIRTD_ARGS=""/' $FI
+else
+  echo 'LIBVIRTD_ARGS=""' >> $FI
+fi
+systemctl enable libvirtd
+systemctl restart libvirtd
+grep '^LIBVIRTD_ARGS=' $FI                       # erwartet: LIBVIRTD_ARGS=""
+ps -o args= -C libvirtd                          # erwartet: ohne --timeout
+systemctl is-enabled libvirtd                    # erwartet: enabled
 ```
 
 ### virtnbdbackup (install-virtnbdbackup)

@@ -109,7 +109,9 @@ _mount() {
   done
   if [ "${_mount}" != "1" ] ; then
     echo "# no backup hd found"
+    sf_set_error
     sf_end
+    exit 1
   fi 
 }
 #############################
@@ -326,10 +328,16 @@ if [ "$CMD" = "backup" ] ; then
     # collect rfs-changes
     #
     for host in $KC_BACKUP_NODES ; do
-      mkdir -p ${KC_TSP_DIR}/rfs-backup/${h}
+      mkdir -p ${KC_TSP_DIR}/rfs-backup/${host}
       echo "###############################################################################"                      2>&1 | tee -a ${LOG_FILE}
       echo "# collect rfs-backup from node=<$host> (defined in /opt/kc/etc/rfs-changes)"                          2>&1 | tee -a ${LOG_FILE}
       _ssh $host "rsync -av --delete --files-from=/opt/kc/etc/rfs-changes  / ${KC_TSP_DIR}/rfs-backup/${host}"    2>&1 | tee -a ${LOG_FILE}
+      ret=${PIPESTATUS[0]}
+      if [ "$ret" != "0" ] ; then
+        echo "error: rsync of rfs-backup from node <$host> returns <$ret>"                                        2>&1 | tee -a ${LOG_FILE}
+        sf_set_error
+        return_error=1
+      fi
     done
     echo "###############################################################################"                        2>&1 | tee -a ${LOG_FILE}
     echo "# backup ${KC_TSP_DIR} content (defined in ${KC_TSP_DIR}/config/backup-content.conf"                    2>&1 | tee -a ${LOG_FILE}
@@ -337,6 +345,12 @@ if [ "$CMD" = "backup" ] ; then
     mkdir -p $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR}
     if [ -f ${KC_TSP_DIR}/config/backup-content.conf ] ; then
        rsync -avr --delete --files-from=${KC_TSP_DIR}/config/backup-content.conf  ${KC_TSP_DIR} $MPOINT/$KC_BACKUP_AREA${KC_TSP_DIR} 2>&1 | tee -a ${LOG_FILE}
+       ret=${PIPESTATUS[0]}
+       if [ "$ret" != "0" ] ; then
+         echo "error: rsync of backup-content returns <$ret>"                                                   2>&1 | tee -a ${LOG_FILE}
+         sf_set_error
+         return_error=1
+       fi
     fi
   fi
   #
@@ -389,7 +403,7 @@ if [ "$CMD" = "backup" ] ; then
       state=$( _virsh ${host} domstate ${DOM} )
       _DATE=$( date +"%Y-%m-%d %H:%M:%S" )
       echo "####################################################"                                                2>&1 | tee -a ${LOG_FILE}
-      echo "#  ${DOM} @ ${h} ($state) ${_DATE}"                                                                  2>&1 | tee -a ${LOG_FILE}
+      echo "#  ${DOM} @ ${host} ($state) ${_DATE}"                                                                  2>&1 | tee -a ${LOG_FILE}
       echo "####################################################"                                                2>&1 | tee -a ${LOG_FILE}
       # Get list of disk names and image paths
       unset imgs ; declare -A imgs
@@ -427,7 +441,7 @@ if [ "$CMD" = "backup" ] ; then
       else
 	_start=$(date +%s)
         virtnbdbackup -U qemu+ssh://root@${host}/system --ssh-user root -d ${DOM} -S -l auto ${exclude_disks} -o $MPOINT/$KC_BACKUP_AREA/domains/${DOM} --checkpointdir ${KC_TSP_DIR}/sync/backup/${DOM} 2>&1 | tee -a ${LOG_FILE}
-        ret=$?
+        ret=${PIPESTATUS[0]}
 	_end=$(date +%s)
 	_secs=$((_end-_start))
 	duration=$( printf '%02d:%02d:%02d' $(($_secs/3600)) $(($_secs%3600/60)) $(($_secs%60)) )
@@ -492,4 +506,4 @@ if [ "$CMD" = "backup" ] ; then
   fi
 fi
 sf_end
-
+exit ${return_error}

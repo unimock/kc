@@ -132,18 +132,17 @@ echo "#arm1:gv0 /tsp0 glusterfs defaults,noauto,backupvolfile-server=arm2 0 0" >
 #ADMIN_USER=madmin ; usermod -aG kvm $ADMIN_USER ; usermod -aG libvirt $ADMIN_USER
 systemctl stop libvirtd
 #
-# dirty startup hack for glusterd-/libvirtd-/mount-issues on boot up
+# mount /tsp0 independently of libvirtd (kc-tsp0.service), libvirtd requires it
 #
 if [ "${IS_GLUSTER_PEER}" = "1" ] ; then
-  echo "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0  # do not mount /tsp0 automatically"  >> /etc/fstab
+  echo "localhost:gv0 /tsp0 glusterfs defaults,noauto 0 0  # mounted by kc-tsp0.service"  >> /etc/fstab
   mount /tsp0
-  # mount /tsp0/ before libvirtd will be started :
+  # mount /tsp0 by kc-tsp0.service, libvirtd requires it :
   mkdir -p /tsp0/scripts
-  FI=/tsp0/scripts/dirty-startup-hack
-  md-exec /opt/kc/INSTALL.md dump dirty-startup-hack > $FI
+  FI=/tsp0/scripts/kc-tsp0-setup
+  md-exec /opt/kc/INSTALL.md dump kc-tsp0-setup > $FI
   chmod a+x $FI
-  /tsp0/scripts/dirty-startup-hack
-  umount /tsp0
+  /tsp0/scripts/kc-tsp0-setup
   systemctl start libvirtd
   df -h | grep tsp0
   #
@@ -157,8 +156,9 @@ if [ "${IS_GLUSTER_PEER}" = "1" ] ; then
   chmod a+x /tsp0/scripts/kc-virt-destroy
 else
   mount /tsp0
+  /tsp0/scripts/kc-tsp0-setup
+  systemctl start libvirtd
   /tsp0/scripts/kc-virt-init
-  /tsp0/scripts/dirty-startup-hack
 fi
 ```
 ### fixes
@@ -367,22 +367,71 @@ virsh net-list --all
 exit
 ```
 
-**dirty-startup-hack** script 
+**kc-tsp0-setup** script
 
-```dirty-startup-hack
+Mounts `/tsp0` via its own systemd unit `kc-tsp0.service`, independent of whether
+libvirtd (socket-activated, idle timeout) is running. libvirtd requires this unit
+through a drop-in, so `/tsp0` is always mounted before libvirtd starts.
+Gluster maintenance: `systemctl stop kc-tsp0` stops libvirtd as well and unmounts `/tsp0`.
+The script is idempotent and also removes the old `dirty-startup-hack` changes from
+`/usr/lib/systemd/system/libvirtd.service`.
+
+```kc-tsp0-setup
 #!/bin/bash
-# mount /tsp0/ before libvirtd will be started :
+#
+# remove old dirty-startup-hack entries from the vendor unit (if present)
+#
 FI=/usr/lib/systemd/system/libvirtd.service
-SUB="ExecStartPre=mount /tsp0"
-grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
-# unmount /tsp0 after libvirtd is stopped :
-SUB="ExecStopPost=umount /tsp0"
-grep -q "${SUB}" $FI || sed -i "/\[Service\]/a ${SUB}" $FI
-# start libvirtd after glusterd :
-SUB="After=glusterd.service"
-grep -q "${SUB}" $FI || sed -i "/\[Unit\]/a ${SUB}" $FI
+sed -i -e '/^ExecStartPre=mount \/tsp0$/d' \
+       -e '/^ExecStopPost=umount \/tsp0$/d' \
+       -e '/^After=glusterd.service$/d' $FI
+#
+# mount unit for /tsp0 (uses the noauto entry in /etc/fstab)
+#
+cat <<'EOF' > /etc/systemd/system/kc-tsp0.service
+[Unit]
+Description=kc: mount /tsp0 (glusterfs gv0)
+Wants=network-online.target glusterd.service
+After=network-online.target glusterd.service
+Before=libvirtd.service virtqemud.service libvirt-guests.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+# glusterd/bricks need some time on boot up -> retry
+ExecStart=/bin/sh -c 'for i in $$(seq 30); do mountpoint -q /tsp0 && exit 0; mount /tsp0 && exit 0; sleep 2; done; exit 1'
+ExecStop=/bin/umount /tsp0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+#
+# libvirtd requires /tsp0 (drop-in survives package updates)
+#
+mkdir -p /etc/systemd/system/libvirtd.service.d
+cat <<'EOF' > /etc/systemd/system/libvirtd.service.d/kc-tsp0.conf
+[Unit]
+Requires=kc-tsp0.service
+After=kc-tsp0.service glusterd.service
+EOF
 systemctl daemon-reload
+systemctl enable --now kc-tsp0.service
+systemctl --no-pager status kc-tsp0.service
+mountpoint /tsp0
 exit
+```
+
+**migration of existing nodes** (replaces dirty-startup-hack, run on every node)
+
+```migrate-kc-tsp0
+md-exec /opt/kc/INSTALL.md run kc-tsp0-setup
+mkdir -p /tsp0/scripts
+md-exec /opt/kc/INSTALL.md dump kc-tsp0-setup > /tsp0/scripts/kc-tsp0-setup
+chmod a+x /tsp0/scripts/kc-tsp0-setup
+rm -f /tsp0/scripts/dirty-startup-hack
+grep tsp0 /usr/lib/systemd/system/libvirtd.service   # expected: no output
+systemctl is-enabled kc-tsp0                         # expected: enabled
 ```
 
 **test domain configuration**

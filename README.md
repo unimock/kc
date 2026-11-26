@@ -97,8 +97,9 @@ ssh $PEER kvmc ls
 ssh $PEER kvmc rm complete
 ssh $PEER systemctl stop libvirt-guests
 ssh $PEER /tsp0/scripts/kc-virt-destroy
-ssh $PEER systemctl stop libvirtd
-ssh $PEER ls /tsp0
+ssh $PEER systemctl stop libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+ssh $PEER systemctl stop kc-tsp0      # stops libvirtd and unmounts /tsp0
+ssh $PEER mountpoint /tsp0            # expected: is not a mountpoint
 ssh $PEER "echo y | gluster volume stop gv0"
 ssh $PEER "echo y | gluster volume delete gv0"
 ssh $PEER systemctl stop glusterd
@@ -124,6 +125,7 @@ scp -r /root/.ssh       $PEER:/root
 scp /root/.bash_aliases $PEER:/root
 vi /tsp0/config/hosts.conf
 ssh $PEER cat /tsp0/scripts/kc-virt-init # wait for gluster heal
+ssh $PEER systemctl start kc-tsp0 libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd
 ssh $PEER /tsp0/scripts/kc-virt-init
 ssh $PEER kvmc ls
 ```
@@ -140,6 +142,21 @@ apt-get update ; apt-get autoremove ; apt-get dist-upgrade
 init 6
 # change the production node. migrate VMs from arm1 to arm2
 kvmc --node=arm1 mig arm2
+```
+
+#### gluster maintenance (/tsp0 mount)
+
+`/tsp0` is mounted by `kc-tsp0.service`, independent of libvirtd (libvirtd requires it).
+Stopping libvirtd alone does **not** unmount `/tsp0` anymore.
+
+```
+systemctl stop libvirt-guests                                               # shut down VMs
+systemctl stop libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket     # no re-activation by virsh/kvmc
+systemctl stop kc-tsp0                                                      # stops libvirtd, unmounts /tsp0
+mountpoint /tsp0                                                            # expected: is not a mountpoint
+# ... gluster maintenance ...
+systemctl start kc-tsp0 libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd
+mountpoint /tsp0
 ```
 
 #### kvmc util examples
@@ -361,9 +378,10 @@ PEER=arm3
 REPLICA=2
 
 # stop libvirt and un-mount /tsp0
-ssh $PEER systemctl stop gluster-guests
-ssh $PEER systemctl stop libvirtd
-ssh $PEER ls /tsp0
+ssh $PEER systemctl stop libvirt-guests
+ssh $PEER systemctl stop libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+ssh $PEER systemctl stop kc-tsp0      # stops libvirtd and unmounts /tsp0
+ssh $PEER mountpoint /tsp0            # expected: is not a mountpoint
 
 gluster peer status
 gluster volume heal gv0 info
@@ -379,8 +397,9 @@ kvmc status
 PEER=arm3
 
 ssh $PEER systemctl stop libvirt-guests
-ssh $PEER systemctl stop libvirtd
-ssh $PEER ls /tsp0
+ssh $PEER systemctl stop libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+ssh $PEER systemctl stop kc-tsp0      # stops libvirtd and unmounts /tsp0
+ssh $PEER mountpoint /tsp0            # expected: is not a mountpoint
 ssh $PEER rm -rf /srv/.bricks/gv
 #
 # add-brick on the active host
@@ -389,8 +408,8 @@ ssh $PEER rm -rf /srv/.bricks/gv
 ssh $PEER gluster volume status gv0
 ssh $PEER gluster volume info   gv0
 ssh $PEER gluster volume heal   gv0 info
-ssh $PEER systemctl start libvirtd
-ssh $PEER ls /tsp0
+ssh $PEER systemctl start kc-tsp0 libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket libvirtd
+ssh $PEER mountpoint /tsp0
 ```
 
 #### add brick to an existing replicated volume (gv0)

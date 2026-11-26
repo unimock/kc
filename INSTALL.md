@@ -399,6 +399,8 @@ Before=libvirtd.service virtqemud.service libvirt-guests.service
 Type=oneshot
 RemainAfterExit=yes
 TimeoutStartSec=120
+# keep the glusterfs fuse process alive if umount fails (target busy)
+KillMode=process
 # glusterd/bricks need some time on boot up -> retry
 ExecStart=/bin/sh -c 'for i in $$(seq 30); do mountpoint -q /tsp0 && exit 0; mount /tsp0 && exit 0; sleep 2; done; exit 1'
 ExecStop=/bin/umount /tsp0
